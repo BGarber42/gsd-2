@@ -63,13 +63,35 @@ export default function (pi: ExtensionAPI) {
   registerGSDCommand(pi);
   registerWorktreeCommand(pi);
 
-  // ── Dynamic-cwd bash tool ──────────────────────────────────────────────
+  // ── Dynamic-cwd bash tool with default timeout ────────────────────────
   // The built-in bash tool captures cwd at startup. This replacement uses
   // a spawnHook to read process.cwd() dynamically so that process.chdir()
   // (used by /worktree switch) propagates to shell commands.
-  const dynamicBash = createBashTool(process.cwd(), {
+  //
+  // The upstream SDK's bash tool has no default timeout — if the LLM omits
+  // the timeout parameter, commands run indefinitely, causing hangs on
+  // Windows where process killing is unreliable (see #40). We wrap execute
+  // to inject a 120-second default when no timeout is provided.
+  const DEFAULT_BASH_TIMEOUT_SECS = 120;
+  const baseBash = createBashTool(process.cwd(), {
     spawnHook: (ctx) => ({ ...ctx, cwd: process.cwd() }),
   });
+  const dynamicBash = {
+    ...baseBash,
+    execute: async (
+      toolCallId: string,
+      params: { command: string; timeout?: number },
+      signal?: AbortSignal,
+      onUpdate?: any,
+      ctx?: any,
+    ) => {
+      const paramsWithTimeout = {
+        ...params,
+        timeout: params.timeout ?? DEFAULT_BASH_TIMEOUT_SECS,
+      };
+      return baseBash.execute(toolCallId, paramsWithTimeout, signal, onUpdate, ctx);
+    },
+  };
   pi.registerTool(dynamicBash as any);
 
   // ── session_start: render branded GSD header + remote channel status ──

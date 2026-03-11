@@ -33,6 +33,7 @@ import {
 	truncateHead,
 	DEFAULT_MAX_BYTES,
 	DEFAULT_MAX_LINES,
+	getShellConfig,
 } from "@mariozechner/pi-coding-agent";
 import {
 	Text,
@@ -42,7 +43,7 @@ import {
 	Key,
 } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createConnection } from "node:net";
 import { randomUUID } from "node:crypto";
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
@@ -551,11 +552,12 @@ function startProcess(opts: StartOptions): BgProcess {
 
 	const env = { ...process.env, ...(opts.env || {}) };
 
-	const proc = spawn("bash", ["-c", opts.command], {
+	const { shell, args: shellArgs } = getShellConfig();
+	const proc = spawn(shell, [...shellArgs, opts.command], {
 		cwd: opts.cwd,
 		stdio: ["pipe", "pipe", "pipe"],
 		env,
-		detached: true,
+		detached: process.platform !== "win32",
 	});
 
 	const bg: BgProcess = {
@@ -686,14 +688,32 @@ function killProcess(id: string, sig: NodeJS.Signals = "SIGTERM"): boolean {
 	if (!bg) return false;
 	if (!bg.alive) return true;
 	try {
-		if (bg.proc.pid) {
-			try {
-				process.kill(-bg.proc.pid, sig);
-			} catch {
+		if (process.platform === "win32") {
+			// Windows: use taskkill /F /T to force-kill the entire process tree.
+			// process.kill(-pid) (Unix process groups) does not work on Windows.
+			if (bg.proc.pid) {
+				const result = spawnSync("taskkill", ["/F", "/T", "/PID", String(bg.proc.pid)], {
+					timeout: 5000,
+					encoding: "utf-8",
+				});
+				if (result.status !== 0 && result.status !== 128) {
+					// taskkill failed — try the direct kill as fallback
+					bg.proc.kill(sig);
+				}
+			} else {
 				bg.proc.kill(sig);
 			}
 		} else {
-			bg.proc.kill(sig);
+			// Unix/macOS: kill the process group via negative PID
+			if (bg.proc.pid) {
+				try {
+					process.kill(-bg.proc.pid, sig);
+				} catch {
+					bg.proc.kill(sig);
+				}
+			} else {
+				bg.proc.kill(sig);
+			}
 		}
 		return true;
 	} catch {
