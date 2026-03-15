@@ -20,25 +20,21 @@ import {
   discoverMarketplace,
   resolvePluginRoot
 } from '../resources/extensions/gsd/marketplace-discovery.js';
+import { getMarketplaceFixtures } from '../resources/extensions/gsd/tests/marketplace-test-fixtures.js';
 
-// Resolve paths to the external marketplace repos
-// Tests run from src/tests/, so we need to go up to gsd-2, then into ../claude_skills
-const REPOS_BASE = path.resolve(import.meta.dirname, '../../..');
-const CLAUDE_SKILLS_PATH = path.join(REPOS_BASE, 'claude_skills');
-const CLAUDE_PLUGINS_OFFICIAL_PATH = path.join(REPOS_BASE, 'claude-plugins-official');
+const fixtureSetup = getMarketplaceFixtures(import.meta.dirname);
+const fixtures = fixtureSetup.fixtures;
+const CLAUDE_SKILLS_PATH = fixtures?.claudeSkillsPath;
+const CLAUDE_PLUGINS_OFFICIAL_PATH = fixtures?.claudePluginsOfficialPath;
 
-function marketplacesAvailable(): boolean {
-  return fs.existsSync(CLAUDE_SKILLS_PATH) && fs.existsSync(CLAUDE_PLUGINS_OFFICIAL_PATH);
-}
-
-const skipReason = !marketplacesAvailable()
-  ? `Marketplace repos not found: ${CLAUDE_SKILLS_PATH}, ${CLAUDE_PLUGINS_OFFICIAL_PATH}`
+const skipReason = !fixtureSetup.available
+  ? fixtureSetup.skipReason ?? 'Marketplace repos not found'
   : undefined;
 
 describe('Marketplace Discovery Contract Tests', { skip: skipReason }, () => {
   describe('claude_skills marketplace (jamie-style)', () => {
     it('should discover at least 15 plugins', () => {
-      const result = discoverMarketplace(CLAUDE_SKILLS_PATH);
+      const result = discoverMarketplace(CLAUDE_SKILLS_PATH!);
       
       assert.strictEqual(result.status, 'ok', `Expected ok status, got error: ${result.error}`);
       assert.ok(result.plugins.length >= 15, 
@@ -46,13 +42,13 @@ describe('Marketplace Discovery Contract Tests', { skip: skipReason }, () => {
     });
 
     it('should detect jamie-style format', () => {
-      const result = discoverMarketplace(CLAUDE_SKILLS_PATH);
+      const result = discoverMarketplace(CLAUDE_SKILLS_PATH!);
       
       assert.strictEqual(result.pluginFormat, 'jamie-style');
     });
 
     it('should verify python3-development has skills and agents', () => {
-      const result = discoverMarketplace(CLAUDE_SKILLS_PATH);
+      const result = discoverMarketplace(CLAUDE_SKILLS_PATH!);
       const pythonPlugin = result.plugins.find(p => p.name === 'python3-development');
       
       assert.ok(pythonPlugin, 'python3-development plugin should exist');
@@ -73,7 +69,7 @@ describe('Marketplace Discovery Contract Tests', { skip: skipReason }, () => {
     });
 
     it('should verify all resolved paths exist on disk', () => {
-      const result = discoverMarketplace(CLAUDE_SKILLS_PATH);
+      const result = discoverMarketplace(CLAUDE_SKILLS_PATH!);
       
       // Filter plugins with resolved paths (local plugins, not external)
       const localPlugins = result.plugins.filter(p => p.resolvedPath !== null);
@@ -87,7 +83,7 @@ describe('Marketplace Discovery Contract Tests', { skip: skipReason }, () => {
     });
 
     it('should preserve canonical names for known plugins', () => {
-      const result = discoverMarketplace(CLAUDE_SKILLS_PATH);
+      const result = discoverMarketplace(CLAUDE_SKILLS_PATH!);
       const knownPluginNames = [
         'python3-development',
         'bash-development',
@@ -106,7 +102,7 @@ describe('Marketplace Discovery Contract Tests', { skip: skipReason }, () => {
     });
 
     it('should have consistent summary counts', () => {
-      const result = discoverMarketplace(CLAUDE_SKILLS_PATH);
+      const result = discoverMarketplace(CLAUDE_SKILLS_PATH!);
       
       assert.strictEqual(result.summary.total, result.plugins.length,
         'Total count should match plugins array length');
@@ -121,7 +117,7 @@ describe('Marketplace Discovery Contract Tests', { skip: skipReason }, () => {
 
   describe('claude-plugins-official marketplace (official-style)', () => {
     it('should discover at least 10 plugins', () => {
-      const result = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH);
+      const result = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH!);
       
       assert.strictEqual(result.status, 'ok', `Expected ok status, got error: ${result.error}`);
       assert.ok(result.plugins.length >= 10,
@@ -129,13 +125,13 @@ describe('Marketplace Discovery Contract Tests', { skip: skipReason }, () => {
     });
 
     it('should detect official-style format', () => {
-      const result = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH);
+      const result = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH!);
       
       assert.strictEqual(result.pluginFormat, 'official-style');
     });
 
     it('should extract LSP servers from inline marketplace metadata', () => {
-      const result = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH);
+      const result = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH!);
       
       // TypeScript LSP plugin should have lspServers from marketplace.json
       const tsPlugin = result.plugins.find(p => p.name === 'typescript-lsp');
@@ -152,7 +148,7 @@ describe('Marketplace Discovery Contract Tests', { skip: skipReason }, () => {
     });
 
     it('should have description from inline metadata', () => {
-      const result = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH);
+      const result = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH!);
       
       const tsPlugin = result.plugins.find(p => p.name === 'typescript-lsp');
       assert.ok(tsPlugin, 'typescript-lsp plugin should exist');
@@ -162,7 +158,7 @@ describe('Marketplace Discovery Contract Tests', { skip: skipReason }, () => {
     });
 
     it('should handle external plugins (URL sources) correctly', () => {
-      const result = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH);
+      const result = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH!);
       
       // Find plugins with URL sources (external)
       const externalPlugins = result.plugins.filter(p => p.resolvedPath === null);
@@ -178,7 +174,7 @@ describe('Marketplace Discovery Contract Tests', { skip: skipReason }, () => {
     });
 
     it('should preserve canonical names for known official plugins', () => {
-      const result = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH);
+      const result = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH!);
       const knownPluginNames = [
         'typescript-lsp',
         'pyright-lsp',
@@ -197,7 +193,7 @@ describe('Marketplace Discovery Contract Tests', { skip: skipReason }, () => {
     });
 
     it('should extract multiple LSP server types', () => {
-      const result = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH);
+      const result = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH!);
       
       // Check that multiple LSP plugins have their servers extracted
       const lspPlugins = [
@@ -313,7 +309,7 @@ describe('Marketplace Discovery Contract Tests', { skip: skipReason }, () => {
 
   describe('Component inventory accuracy', () => {
     it('should accurately count skills in python3-development', () => {
-      const result = discoverMarketplace(CLAUDE_SKILLS_PATH);
+      const result = discoverMarketplace(CLAUDE_SKILLS_PATH!);
       const pythonPlugin = result.plugins.find(p => p.name === 'python3-development');
       
       assert.ok(pythonPlugin, 'python3-development should exist');
@@ -334,7 +330,7 @@ describe('Marketplace Discovery Contract Tests', { skip: skipReason }, () => {
     });
 
     it('should discover MCP servers from plugin.json', () => {
-      const result = discoverMarketplace(CLAUDE_SKILLS_PATH);
+      const result = discoverMarketplace(CLAUDE_SKILLS_PATH!);
       const pythonPlugin = result.plugins.find(p => p.name === 'python3-development');
       
       assert.ok(pythonPlugin, 'python3-development should exist');
@@ -343,7 +339,7 @@ describe('Marketplace Discovery Contract Tests', { skip: skipReason }, () => {
     });
 
     it('should include commands in inventory when present', () => {
-      const result = discoverMarketplace(CLAUDE_SKILLS_PATH);
+      const result = discoverMarketplace(CLAUDE_SKILLS_PATH!);
       const pythonPlugin = result.plugins.find(p => p.name === 'python3-development');
       
       assert.ok(pythonPlugin, 'python3-development should exist');
@@ -352,7 +348,7 @@ describe('Marketplace Discovery Contract Tests', { skip: skipReason }, () => {
     });
 
     it('should detect hooks when present', () => {
-      const result = discoverMarketplace(CLAUDE_SKILLS_PATH);
+      const result = discoverMarketplace(CLAUDE_SKILLS_PATH!);
       
       // Find any plugin with hooks
       const pluginWithHooks = result.plugins.find(p => 
@@ -367,8 +363,8 @@ describe('Marketplace Discovery Contract Tests', { skip: skipReason }, () => {
 
   describe('Cross-marketplace consistency', () => {
     it('should return consistent type structure for both marketplaces', () => {
-      const jamie = discoverMarketplace(CLAUDE_SKILLS_PATH);
-      const official = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH);
+      const jamie = discoverMarketplace(CLAUDE_SKILLS_PATH!);
+      const official = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH!);
       
       // Both should have the same top-level structure
       const requiredKeys = ['status', 'marketplacePath', 'marketplaceName', 
@@ -388,8 +384,8 @@ describe('Marketplace Discovery Contract Tests', { skip: skipReason }, () => {
     });
 
     it('should return consistent plugin structure', () => {
-      const jamie = discoverMarketplace(CLAUDE_SKILLS_PATH);
-      const official = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH);
+      const jamie = discoverMarketplace(CLAUDE_SKILLS_PATH!);
+      const official = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH!);
       
       const jamiePlugin = jamie.plugins[0];
       const officialPlugin = official.plugins[0];

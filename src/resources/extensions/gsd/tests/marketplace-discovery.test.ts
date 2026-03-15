@@ -16,23 +16,20 @@ import {
   discoverMarketplace,
   resolvePluginRoot
 } from '../marketplace-discovery';
+import { getMarketplaceFixtures } from './marketplace-test-fixtures.js';
 
-// Resolve paths relative to the gsd-2 project root so CI can skip cleanly when repos are absent
-const GSD2_ROOT = path.resolve(import.meta.dirname, '../../../../..');
-const CLAUDE_SKILLS_PATH = path.resolve(GSD2_ROOT, '../claude_skills');
-const CLAUDE_PLUGINS_OFFICIAL_PATH = path.resolve(GSD2_ROOT, '../claude-plugins-official');
+const fixtureSetup = getMarketplaceFixtures(import.meta.dirname);
+const fixtures = fixtureSetup.fixtures;
+const CLAUDE_SKILLS_PATH = fixtures?.claudeSkillsPath;
+const CLAUDE_PLUGINS_OFFICIAL_PATH = fixtures?.claudePluginsOfficialPath;
 
-function marketplacesAvailable(): boolean {
-  return fs.existsSync(CLAUDE_SKILLS_PATH) && fs.existsSync(CLAUDE_PLUGINS_OFFICIAL_PATH);
-}
-
-const skipReason = !marketplacesAvailable()
-  ? `Marketplace repos not found: ${CLAUDE_SKILLS_PATH}, ${CLAUDE_PLUGINS_OFFICIAL_PATH}`
+const skipReason = !fixtureSetup.available
+  ? fixtureSetup.skipReason ?? 'Marketplace repos not found'
   : undefined;
 
 describe('parseMarketplaceJson', { skip: skipReason }, () => {
   it('should parse jamie-style marketplace.json', () => {
-    const result = parseMarketplaceJson(CLAUDE_SKILLS_PATH);
+    const result = parseMarketplaceJson(CLAUDE_SKILLS_PATH!);
     assert.strictEqual(result.success, true);
     if (result.success) {
       assert.strictEqual(result.manifest.name, 'jamie-bitflight-skills');
@@ -41,7 +38,7 @@ describe('parseMarketplaceJson', { skip: skipReason }, () => {
   });
 
   it('should parse official-style marketplace.json', () => {
-    const result = parseMarketplaceJson(CLAUDE_PLUGINS_OFFICIAL_PATH);
+    const result = parseMarketplaceJson(CLAUDE_PLUGINS_OFFICIAL_PATH!);
     assert.strictEqual(result.success, true);
     if (result.success) {
       assert.strictEqual(result.manifest.name, 'claude-plugins-official');
@@ -74,29 +71,29 @@ describe('parseMarketplaceJson', { skip: skipReason }, () => {
 
 describe('resolvePluginRoot', () => {
   it('should resolve relative paths correctly', () => {
-    const result = resolvePluginRoot(CLAUDE_SKILLS_PATH, './plugins/python3-development');
-    assert.strictEqual(result, path.join(CLAUDE_SKILLS_PATH, 'plugins/python3-development'));
+    const result = resolvePluginRoot(CLAUDE_SKILLS_PATH!, './plugins/python3-development');
+    assert.strictEqual(result, path.join(CLAUDE_SKILLS_PATH!, 'plugins/python3-development'));
   });
 
   it('should handle paths without ./ prefix', () => {
-    const result = resolvePluginRoot(CLAUDE_SKILLS_PATH, 'plugins/python3-development');
-    assert.strictEqual(result, path.join(CLAUDE_SKILLS_PATH, 'plugins/python3-development'));
+    const result = resolvePluginRoot(CLAUDE_SKILLS_PATH!, 'plugins/python3-development');
+    assert.strictEqual(result, path.join(CLAUDE_SKILLS_PATH!, 'plugins/python3-development'));
   });
 
   it('should return null for external sources', () => {
-    const result = resolvePluginRoot(CLAUDE_SKILLS_PATH, 'https://github.com/example/plugin');
+    const result = resolvePluginRoot(CLAUDE_SKILLS_PATH!, 'https://github.com/example/plugin');
     assert.strictEqual(result, null);
   });
 
   it('should return null for git sources', () => {
-    const result = resolvePluginRoot(CLAUDE_SKILLS_PATH, { source: 'github', repo: 'example/plugin' });
+    const result = resolvePluginRoot(CLAUDE_SKILLS_PATH!, { source: 'github', repo: 'example/plugin' });
     assert.strictEqual(result, null);
   });
 });
 
 describe('inspectPlugin', () => {
   it('should inspect a plugin with plugin.json', () => {
-    const pluginDir = path.join(CLAUDE_SKILLS_PATH, 'plugins/python3-development');
+    const pluginDir = path.join(CLAUDE_SKILLS_PATH!, 'plugins/python3-development');
     const result = inspectPlugin(pluginDir);
     
     assert.strictEqual(result.status, 'ok');
@@ -119,7 +116,7 @@ describe('inspectPlugin', () => {
 
 describe('discoverMarketplace', () => {
   it('should discover all plugins in jamie-style marketplace', () => {
-    const result = discoverMarketplace(CLAUDE_SKILLS_PATH);
+    const result = discoverMarketplace(CLAUDE_SKILLS_PATH!);
     
     assert.strictEqual(result.status, 'ok');
     assert.strictEqual(result.pluginFormat, 'jamie-style');
@@ -132,7 +129,7 @@ describe('discoverMarketplace', () => {
   });
 
   it('should discover all plugins in official-style marketplace', () => {
-    const result = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH);
+    const result = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH!);
     
     assert.strictEqual(result.status, 'ok');
     assert.strictEqual(result.pluginFormat, 'official-style');
@@ -150,7 +147,7 @@ describe('discoverMarketplace', () => {
   });
 
   it('should inventory skills, agents, commands correctly', () => {
-    const result = discoverMarketplace(CLAUDE_SKILLS_PATH);
+    const result = discoverMarketplace(CLAUDE_SKILLS_PATH!);
     const pythonPlugin = result.plugins.find(p => p.name === 'python3-development');
     
     assert.ok(pythonPlugin !== undefined);
@@ -162,7 +159,7 @@ describe('discoverMarketplace', () => {
   });
 
   it('should discover MCP servers from plugin.json', () => {
-    const result = discoverMarketplace(CLAUDE_SKILLS_PATH);
+    const result = discoverMarketplace(CLAUDE_SKILLS_PATH!);
     const pythonPlugin = result.plugins.find(p => p.name === 'python3-development');
     
     assert.ok(pythonPlugin !== undefined);
@@ -172,7 +169,7 @@ describe('discoverMarketplace', () => {
   });
 
   it('should discover LSP servers from marketplace.json', () => {
-    const result = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH);
+    const result = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH!);
     const tsPlugin = result.plugins.find(p => p.name === 'typescript-lsp');
     
     assert.ok(tsPlugin !== undefined);
@@ -182,7 +179,7 @@ describe('discoverMarketplace', () => {
   });
 
   it('should detect external plugins correctly', () => {
-    const result = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH);
+    const result = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH!);
     const externalPlugin = result.plugins.find(p => p.name === 'atlassian');
     
     assert.ok(externalPlugin !== undefined);
@@ -195,8 +192,8 @@ describe('discoverMarketplace', () => {
 
 describe('smoke test', () => {
   it('should be able to run discovery from both marketplace repos', () => {
-    const jamieResult = discoverMarketplace(CLAUDE_SKILLS_PATH);
-    const officialResult = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH);
+    const jamieResult = discoverMarketplace(CLAUDE_SKILLS_PATH!);
+    const officialResult = discoverMarketplace(CLAUDE_PLUGINS_OFFICIAL_PATH!);
     
     assert.strictEqual(jamieResult.status, 'ok');
     assert.strictEqual(officialResult.status, 'ok');
