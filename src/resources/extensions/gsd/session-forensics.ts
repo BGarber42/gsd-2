@@ -313,10 +313,10 @@ function formatRecoveryPrompt(
   const sections: string[] = [];
 
   sections.push(
-    "## Crash Recovery Briefing",
+    "## Recovery Briefing",
     "",
-    `You are resuming \`${unitType}\` for \`${unitId}\` after a crash.`,
-    `The previous session completed **${trace.toolCallCount} tool calls** before dying.`,
+    `You are resuming \`${unitType}\` for \`${unitId}\` after an interruption.`,
+    `The previous session completed **${trace.toolCallCount} tool calls** before stopping.`,
     "Use this briefing to pick up exactly where it left off. Do NOT redo completed work.",
   );
 
@@ -352,7 +352,7 @@ function formatRecoveryPrompt(
   // Errors
   if (trace.errors.length > 0) {
     sections.push(
-      "", "### Errors Before Crash",
+      "", "### Errors Before Interruption",
       ...trace.errors.slice(-3).map(e => `- ${truncate(e, 200)}`),
     );
   }
@@ -368,7 +368,7 @@ function formatRecoveryPrompt(
   // Last reasoning
   if (trace.lastReasoning) {
     sections.push(
-      "", "### Last Agent Reasoning Before Crash",
+      "", "### Last Agent Reasoning Before Interruption",
       `> ${trace.lastReasoning.replace(/\n/g, "\n> ")}`,
     );
   }

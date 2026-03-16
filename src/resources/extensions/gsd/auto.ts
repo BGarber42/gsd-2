@@ -244,6 +244,9 @@ function escapeStaleWorktree(base: string): string {
 /** Crash recovery prompt — set by startAuto, consumed by first dispatchNextUnit */
 let pendingCrashRecovery: string | null = null;
 
+/** Session file path captured at pause — used to synthesize recovery briefing on resume */
+let pausedSessionFile: string | null = null;
+
 /** Dashboard tracking */
 let autoStartTime: number = 0;
 let completedUnits: { type: string; id: string; startedAt: number; finishedAt: number }[] = [];
@@ -588,6 +591,7 @@ export async function stopAuto(ctx?: ExtensionContext, pi?: ExtensionAPI): Promi
   clearActivityLogState();
   resetProactiveHealing();
   pendingCrashRecovery = null;
+  pausedSessionFile = null;
   _handlingAgentEnd = false;
   ctx?.ui.setStatus("gsd-auto", undefined);
   ctx?.ui.setWidget("gsd-progress", undefined);
@@ -612,6 +616,11 @@ export async function stopAuto(ctx?: ExtensionContext, pi?: ExtensionAPI): Promi
 export async function pauseAuto(ctx?: ExtensionContext, _pi?: ExtensionAPI): Promise<void> {
   if (!active) return;
   clearUnitTimeout();
+
+  // Capture the current session file before clearing state — used for
+  // recovery briefing on resume so the next agent knows what already happened.
+  pausedSessionFile = ctx?.sessionManager?.getSessionFile() ?? null;
+
   if (lockBase()) clearLock(lockBase());
 
   // Remove SIGTERM handler registered at auto-mode start
@@ -709,6 +718,28 @@ export async function startAuto(
     // Self-heal: clear stale runtime records where artifacts already exist
     await selfHealRuntimeRecords(basePath, ctx, completedKeySet);
     invalidateAllCaches();
+
+    // Synthesize recovery briefing from the paused session so the next agent
+    // knows what already happened (reuses crash recovery infrastructure).
+    if (pausedSessionFile) {
+      const activityDir = join(gsdRoot(basePath), "activity");
+      const recovery = synthesizeCrashRecovery(
+        basePath,
+        currentUnit?.type ?? "unknown",
+        currentUnit?.id ?? "unknown",
+        pausedSessionFile,
+        activityDir,
+      );
+      if (recovery && recovery.trace.toolCallCount > 0) {
+        pendingCrashRecovery = recovery.prompt;
+        ctx.ui.notify(
+          `Recovered ${recovery.trace.toolCallCount} tool calls from paused session. Resuming with context.`,
+          "info",
+        );
+      }
+      pausedSessionFile = null;
+    }
+
     await dispatchNextUnit(ctx, pi);
     return;
   }
