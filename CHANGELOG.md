@@ -6,8 +6,37 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.20.0] - 2026-03-16
+
+### Added
+- **Telegram remote questions** — receive and respond to GSD questions via Telegram bot alongside existing Slack and Discord channels (#645)
+- **`/gsd quick`** — execute a quick task with GSD guarantees (atomic commits, state tracking) without the full planning overhead (#437)
+- **`/gsd mode`** — workflow mode system with solo and team presets that configure defaults for milestone IDs, git commit behavior, and documentation settings (#651)
+- **`/gsd help`** — categorized command reference with descriptions for all GSD subcommands (#630)
+- **`/gsd doctor`** — 7 runtime health checks with auto-fix for common state corruption issues (#646)
+- **Agent instructions injection** — `agent-instructions.md` loaded into every agent session for persistent per-project behavioral guidance (#437)
+- **Skill lifecycle management** — telemetry tracking, health dashboard, and heal-skill command for managing custom skills (#599)
+- **SQLite context store** — surgical prompt injection from structured knowledge base for precise context engineering (#619)
+- **Context-window budget engine** — proportional prompt sizing that allocates context budget across system prompt sections based on relevance (#660)
+- **LSP activated by default** — Language Server Protocol now auto-activates with call hierarchy, formatting, signature help, and synchronized edits (#639)
+- **Extension smoke tests** — CI catches import failures, circular deps, and module resolution issues across all bundled extensions
+- **`gsd --debug` mode** — structured JSONL diagnostic logging for troubleshooting dispatch and state issues (#468)
+- **Worktree post-create hook** — run custom setup scripts when GSD creates a new worktree (#597)
+
 ### Fixed
-- Onboarding wizard no longer repeats every launch for extension-based providers (e.g. pi-claude-cli) that may not require credentials in auth.json
+- **CPU spinning from regex backtracking** — replaced `[\s\S]*?` regex in preferences parser with indexOf-based scanning (#468)
+- **Model config bleed between concurrent GSD instances** — isolated model configuration per session (#650)
+- **Onboarding wizard repeats** — skip onboarding for extension-based providers that don't require auth.json credentials (#589)
+- **Session tool rebuild on cwd change** — tools now rebuild correctly when working directory changes mid-session (#633)
+- **Auto mode state derivation after discussion fallthrough** — re-derives state to prevent stale dispatches (#609)
+- **Milestone branch preservation on auto stop** — prevents work loss when stopping auto mode (#601)
+- **Infinite loop when milestone detection silently fails** — `findMilestoneIds` now logs errors and warns instead of looping (#456)
+- **Google Search OAuth fallback** — uses Google Cloud Code Assist API when `GEMINI_API_KEY` is not set (#466)
+
+### Changed
+- **Preferences wizard** — replaced serial flow with categorized menu for faster configuration (#623)
+- **Slack remote questions** — brought to feature parity with Discord integration (#628)
+- **YAML support in hooks** — hooks now support YAML configuration alongside JSON (#637)
 
 ## [2.19.0] - 2026-03-16
 
@@ -780,7 +809,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - License updated to MIT
 
-[Unreleased]: https://github.com/gsd-build/gsd-2/compare/v2.19.0...HEAD
+[Unreleased]: https://github.com/gsd-build/gsd-2/compare/v2.20.0...HEAD
 [2.19.0]: https://github.com/gsd-build/gsd-2/compare/v2.18.0...v2.19.0
 [2.18.0]: https://github.com/gsd-build/gsd-2/compare/v2.17.0...v2.18.0
 [2.17.0]: https://github.com/gsd-build/gsd-2/compare/v2.16.0...v2.17.0
@@ -817,6 +846,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [2.7.1]: https://github.com/gsd-build/gsd-2/compare/v2.7.0...v2.7.1
 [2.7.0]: https://github.com/gsd-build/gsd-2/compare/v2.6.0...v2.7.0
 [2.6.0]: https://github.com/gsd-build/gsd-2/compare/v2.5.1...v2.6.0
+[2.20.0]: https://github.com/gsd-build/gsd-2/releases/tag/v2.20.0
 [2.5.1]: https://github.com/gsd-build/gsd-2/compare/v2.5.0...v2.5.1
 [2.5.0]: https://github.com/gsd-build/gsd-2/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/gsd-build/gsd-2/compare/v2.3.11...v2.4.0

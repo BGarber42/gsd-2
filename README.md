@@ -232,6 +232,7 @@ On first run, GSD launches a branded setup wizard that walks you through LLM pro
 | `/gsd`                  | Step mode — executes one unit at a time, pauses between each    |
 | `/gsd next`             | Explicit step mode (same as bare `/gsd`)                        |
 | `/gsd auto`             | Autonomous mode — researches, plans, executes, commits, repeats |
+| `/gsd quick`            | Execute a quick task with GSD guarantees, skip planning overhead |
 | `/gsd stop`             | Stop auto mode gracefully                                       |
 | `/gsd steer`            | Hard-steer plan documents during execution                      |
 | `/gsd discuss`          | Discuss architecture and decisions (works alongside auto mode)  |
@@ -239,7 +240,9 @@ On first run, GSD launches a branded setup wizard that walks you through LLM pro
 | `/gsd queue`            | Queue future milestones (safe during auto mode)                 |
 | `/gsd prefs`            | Model selection, timeouts, budget ceiling                       |
 | `/gsd migrate`          | Migrate a v1 `.planning` directory to `.gsd` format             |
-| `/gsd doctor`           | Validate `.gsd/` integrity, find and fix issues                 |
+| `/gsd help`             | Categorized command reference for all GSD subcommands           |
+| `/gsd mode`             | Switch workflow mode (solo/team) with coordinated defaults      |
+| `/gsd doctor`           | Runtime health checks with auto-fix for common issues           |
 | `/worktree` (`/wt`)     | Git worktree lifecycle — create, switch, merge, remove          |
 | `/voice`                | Toggle real-time speech-to-text (macOS, Linux)                  |
 | `/exit`                 | Graceful shutdown — saves session state before exiting          |
