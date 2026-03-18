@@ -309,6 +309,16 @@ export function updateProgressWidget(
   }
   if (cachedBranch) widgetPwd = `${widgetPwd} (${cachedBranch})`;
 
+  // Set a string-array fallback first — this is the only version RPC mode will
+  // see, since the factory widget set below is not supported in RPC mode.
+  const progressText = buildProgressTextLines(
+    verb, phaseLabel, unitId, mid, slice, task, next,
+    accessors, tierBadge, widgetPwd,
+  );
+  ctx.ui.setWidget("gsd-progress", progressText);
+
+  // Set the factory-based widget — in TUI mode this replaces the string-array
+  // version with a dynamic, animated widget. In RPC mode this call is a no-op.
   ctx.ui.setWidget("gsd-progress", (tui, theme) => {
     let pulseBright = true;
     let cachedLines: string[] | undefined;
@@ -517,6 +527,65 @@ export function updateProgressWidget(
       },
     };
   });
+}
+
+// ─── Text Fallback for RPC Mode ───────────────────────────────────────────
+
+/**
+ * Build a compact string-array representation of the progress widget.
+ * Used as a fallback when the factory-based widget cannot render (RPC mode).
+ */
+function buildProgressTextLines(
+  verb: string,
+  phaseLabel: string,
+  unitId: string,
+  mid: { id: string; title: string } | null,
+  slice: { id: string; title: string } | null,
+  task: { id: string; title: string } | null,
+  next: string,
+  accessors: WidgetStateAccessors,
+  tierBadge: string | undefined,
+  widgetPwd: string,
+): string[] {
+  const mode = accessors.isStepMode() ? "step" : "auto";
+  const elapsed = formatAutoElapsed(accessors.getAutoStartTime());
+  const tierStr = tierBadge ? ` [${tierBadge}]` : "";
+
+  const lines: string[] = [];
+  lines.push(`[GSD ${mode}] ${verb} ${unitId}${tierStr}${elapsed ? ` — ${elapsed}` : ""}`);
+
+  if (mid) lines.push(`  Milestone: ${mid.id} — ${mid.title}`);
+  if (slice) lines.push(`  Slice: ${slice.id} — ${slice.title}`);
+  if (task) lines.push(`  Task: ${task.id} — ${task.title}`);
+
+  // Progress bar
+  const sp = cachedSliceProgress;
+  if (sp && sp.total > 0) {
+    const pct = Math.round((sp.done / sp.total) * 100);
+    const taskInfo = sp.activeSliceTasks
+      ? ` (tasks: ${sp.activeSliceTasks.done}/${sp.activeSliceTasks.total})`
+      : "";
+    lines.push(`  Progress: ${sp.done}/${sp.total} slices (${pct}%)${taskInfo}`);
+  }
+
+  // Cost / tokens
+  const ledger = getLedger();
+  const totals = ledger ? getProjectTotals(ledger.units) : null;
+  if (totals) {
+    const parts: string[] = [];
+    if (totals.tokens.input || totals.tokens.output) {
+      parts.push(`tokens: ${formatWidgetTokens(totals.tokens.input)}↑ ${formatWidgetTokens(totals.tokens.output)}↓`);
+    }
+    if (totals.cost > 0) {
+      parts.push(`cost: ${formatCost(totals.cost)}`);
+    }
+    if (parts.length > 0) lines.push(`  ${parts.join(" — ")}`);
+  }
+
+  if (next) lines.push(`  Next: ${next}`);
+  lines.push(`  ${widgetPwd}`);
+
+  return lines;
 }
 
 // ─── Right-align Helper ───────────────────────────────────────────────────────
