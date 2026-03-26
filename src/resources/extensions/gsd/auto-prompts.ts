@@ -23,6 +23,7 @@ import { getLoadedSkills, type Skill } from "@gsd/pi-coding-agent";
 import { join, basename } from "node:path";
 import { existsSync } from "node:fs";
 import { computeBudgets, resolveExecutorContextWindow, truncateAtSectionBoundary } from "./context-budget.js";
+import { getPendingGates } from "./gsd-db.js";
 import { formatDecisionsCompact, formatRequirementsCompact } from "./structured-data-formatter.js";
 
 // ─── Preamble Cap ─────────────────────────────────────────────────────────────
@@ -1658,6 +1659,96 @@ export async function buildReactiveExecutePrompt(
     readyTaskList: readyTaskListLines.join("\n"),
     subagentPrompts: subagentSections.join("\n\n---\n\n"),
     inlinedTemplates,
+  });
+}
+
+// ─── Gate Evaluation ──────────────────────────────────────────────────────
+
+const GATE_QUESTIONS: Record<string, { question: string; guidance: string }> = {
+  Q3: {
+    question: "How can this be exploited?",
+    guidance: [
+      "Identify abuse scenarios: parameter tampering, replay attacks, privilege escalation.",
+      "Map data exposure risks: PII, tokens, secrets accessible through this slice.",
+      "Define input trust boundaries: untrusted user input reaching DB, API, or filesystem.",
+      "If none apply, return verdict 'omitted' with rationale explaining why.",
+    ].join("\n"),
+  },
+  Q4: {
+    question: "What existing promises does this break?",
+    guidance: [
+      "List which existing requirements (R001, R003, etc.) are touched by this slice.",
+      "Identify what must be re-tested after shipping.",
+      "Flag decisions that should be revisited given the new scope.",
+      "If no existing requirements are affected, return verdict 'omitted'.",
+    ].join("\n"),
+  },
+};
+
+export async function buildGateEvaluatePrompt(
+  mid: string, midTitle: string, sid: string, sTitle: string,
+  base: string,
+): Promise<string> {
+  const pending = getPendingGates(mid, sid, "slice");
+
+  // Load the slice plan for context
+  const planFile = resolveSliceFile(base, mid, sid, "PLAN");
+  const planContent = planFile ? (await loadFile(planFile)) ?? "(plan file empty)" : "(plan file not found)";
+
+  // Build per-gate subagent prompts
+  const subagentSections: string[] = [];
+  const gateListLines: string[] = [];
+
+  for (const gate of pending) {
+    const meta = GATE_QUESTIONS[gate.gate_id];
+    if (!meta) continue;
+
+    gateListLines.push(`- **${gate.gate_id}**: ${meta.question}`);
+
+    const subPrompt = [
+      `You are evaluating quality gate **${gate.gate_id}** for slice ${sid} (${sTitle}).`,
+      "",
+      `## Question: ${meta.question}`,
+      "",
+      meta.guidance,
+      "",
+      "## Slice Plan",
+      "",
+      planContent,
+      "",
+      "## Instructions",
+      "",
+      "Analyze the slice plan above and answer the gate question.",
+      `Call the \`gsd_save_gate_result\` tool with:`,
+      `- \`milestoneId\`: "${mid}"`,
+      `- \`sliceId\`: "${sid}"`,
+      `- \`gateId\`: "${gate.gate_id}"`,
+      "- `verdict`: \"pass\" (no concerns), \"flag\" (concerns found), or \"omitted\" (not applicable)",
+      "- `rationale`: one-sentence justification",
+      "- `findings`: detailed markdown findings (or empty if omitted)",
+    ].join("\n");
+
+    subagentSections.push([
+      `### ${gate.gate_id}: ${meta.question}`,
+      "",
+      "Use this as the prompt for a `subagent` call:",
+      "",
+      "```",
+      subPrompt,
+      "```",
+    ].join("\n"));
+  }
+
+  return loadPrompt("gate-evaluate", {
+    workingDirectory: base,
+    milestoneId: mid,
+    milestoneTitle: midTitle,
+    sliceId: sid,
+    sliceTitle: sTitle,
+    slicePlanContent: planContent,
+    gateCount: String(pending.length),
+    gateList: gateListLines.join("\n"),
+    subagentPrompts: subagentSections.join("\n\n---\n\n"),
   });
 }
 

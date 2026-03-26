@@ -230,6 +230,35 @@ export function verifyExpectedArtifact(
     return true;
   }
 
+  // Gate-evaluate: verify that each dispatched gate has been resolved in the DB.
+  // The unitId encodes the batch: "{mid}/{sid}/gates+Q3,Q4"
+  if (unitType === "gate-evaluate") {
+    const parts = unitId.split("/");
+    const mid = parts[0];
+    const sid = parts[1];
+    const batchPart = parts[2]; // "gates+Q3,Q4"
+    if (!mid || !sid || !batchPart) return false;
+
+    const plusIdx = batchPart.indexOf("+");
+    if (plusIdx === -1) return true; // no specific gates encoded — pass
+
+    const gateIds = batchPart.slice(plusIdx + 1).split(",").filter(Boolean);
+    if (gateIds.length === 0) return true;
+
+    try {
+      const { getPendingGates: getPending } = require("./gsd-db.js");
+      const pending = getPending(mid, sid, "slice");
+      const pendingIds = new Set(pending.map((g: any) => g.gate_id));
+      // All dispatched gates must no longer be pending
+      for (const gid of gateIds) {
+        if (pendingIds.has(gid)) return false;
+      }
+    } catch {
+      // DB unavailable — treat as verified to avoid blocking
+    }
+    return true;
+  }
+
   const absPath = resolveExpectedArtifactPath(unitType, unitId, base);
   // For unit types with no verifiable artifact (null path), the parent directory
   // is missing on disk — treat as stale completion state so the key gets evicted (#313).

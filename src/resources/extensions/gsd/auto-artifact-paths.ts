@@ -80,6 +80,9 @@ export function resolveExpectedArtifactPath(
     }
     case "rewrite-docs":
       return null;
+    case "gate-evaluate":
+      // Gate evaluate writes to DB quality_gates table — verified via state derivation
+      return null;
     case "reactive-execute":
       // Reactive execute produces multiple task summaries — verified separately
       return null;
