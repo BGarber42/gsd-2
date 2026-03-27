@@ -97,7 +97,7 @@ function makeMockDeps(
     captureAvailableSkills: () => {},
     ensurePreconditions: () => {},
     updateSliceProgressCache: () => {},
-    selectAndApplyModel: async () => ({ routing: null }),
+    selectAndApplyModel: async () => ({ routing: null, appliedModel: null }),
     startUnitSupervision: () => {},
     getDeepDiagnostic: () => null,
     isDbAvailable: () => false,

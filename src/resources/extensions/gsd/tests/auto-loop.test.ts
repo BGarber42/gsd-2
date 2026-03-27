@@ -79,11 +79,17 @@ function makeMockCtx() {
  */
 function makeMockPi() {
   const calls: unknown[] = [];
+  const setModelCalls: unknown[] = [];
   return {
     sendMessage: (...args: unknown[]) => {
       calls.push(args);
     },
+    setModel: async (...args: unknown[]) => {
+      setModelCalls.push(args);
+      return true;
+    },
     calls,
+    setModelCalls,
   } as any;
 }
 
@@ -224,6 +230,38 @@ test("runUnit only arms resolve after newSession completes", async () => {
 
   const result = await resultPromise;
   assert.equal(result.status, "completed");
+  assert.equal(pi.calls.length, 1);
+});
+
+test("runUnit re-applies the selected unit model after newSession before dispatch", async () => {
+  _resetPendingResolve();
+
+  const callOrder: string[] = [];
+  const ctx = makeMockCtx();
+  const pi = makeMockPi();
+  pi.setModel = async (...args: unknown[]) => {
+    callOrder.push("setModel");
+    pi.setModelCalls.push(args);
+    return true;
+  };
+  pi.sendMessage = (...args: unknown[]) => {
+    callOrder.push("sendMessage");
+    pi.calls.push(args);
+  };
+
+  const s = makeMockSession();
+  s.currentUnitModel = { provider: "anthropic", id: "claude-opus-4-6" };
+
+  const resultPromise = runUnit(ctx, pi, s, "task", "T01", "prompt");
+
+  await new Promise((r) => setTimeout(r, 10));
+  resolveAgentEnd(makeEvent());
+
+  const result = await resultPromise;
+  assert.equal(result.status, "completed");
+  assert.deepEqual(callOrder, ["setModel", "sendMessage"]);
+  assert.equal(pi.setModelCalls.length, 1);
+  assert.deepEqual(pi.setModelCalls[0][0], s.currentUnitModel);
   assert.equal(pi.calls.length, 1);
 });
 
@@ -372,7 +410,7 @@ function makeMockDeps(
     captureAvailableSkills: () => {},
     ensurePreconditions: () => {},
     updateSliceProgressCache: () => {},
-    selectAndApplyModel: async () => ({ routing: null }),
+    selectAndApplyModel: async () => ({ routing: null, appliedModel: null }),
     startUnitSupervision: () => {},
     getDeepDiagnostic: () => null,
     isDbAvailable: () => false,

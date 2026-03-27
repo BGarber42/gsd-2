@@ -4,6 +4,7 @@
  * and fallback chains.
  */
 
+import type { Api, Model } from "@gsd/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@gsd/pi-coding-agent";
 import type { GSDPreferences } from "./preferences.js";
 import { resolveModelWithFallbacksForUnit, resolveDynamicRoutingConfig } from "./preferences.js";
@@ -16,6 +17,8 @@ import { unitPhaseLabel } from "./auto-dashboard.js";
 export interface ModelSelectionResult {
   /** Routing metadata for metrics recording */
   routing: { tier: string; modelDowngraded: boolean } | null;
+  /** Concrete model applied before dispatch so it can be restored after a fresh session. */
+  appliedModel: Model<Api> | null;
 }
 
 export function resolvePreferredModelConfig(
@@ -58,6 +61,7 @@ export async function selectAndApplyModel(
 ): Promise<ModelSelectionResult> {
   const modelConfig = resolvePreferredModelConfig(unitType, autoModeStartModel);
   let routing: { tier: string; modelDowngraded: boolean } | null = null;
+  let appliedModel: Model<Api> | null = null;
 
   if (modelConfig) {
     const availableModels = ctx.modelRegistry.getAvailable();
@@ -146,6 +150,7 @@ export async function selectAndApplyModel(
 
       const ok = await pi.setModel(model, { persist: false });
       if (ok) {
+        appliedModel = model;
         const fallbackNote = modelId === effectiveModelConfig.primary
           ? ""
           : ` (fallback from ${effectiveModelConfig.primary})`;
@@ -172,12 +177,17 @@ export async function selectAndApplyModel(
       const ok = await pi.setModel(startModel, { persist: false });
       if (!ok) {
         const byId = availableModels.find(m => m.id === autoModeStartModel.id);
-        if (byId) await pi.setModel(byId, { persist: false });
+        if (byId) {
+          const fallbackOk = await pi.setModel(byId, { persist: false });
+          if (fallbackOk) appliedModel = byId;
+        }
+      } else {
+        appliedModel = startModel;
       }
     }
   }
 
-  return { routing };
+  return { routing, appliedModel };
 }
 
 /**
