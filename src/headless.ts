@@ -130,13 +130,12 @@ export function parseHeadlessArgs(argv: string[]): HeadlessOptions {
   }
 
   const args = argv.slice(2)
-  let positionalStarted = false
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
     if (arg === 'headless') continue
 
-    if (!positionalStarted && arg.startsWith('--')) {
+    if (arg.startsWith('--')) {
       if (arg === '--timeout' && i + 1 < args.length) {
         options.timeout = parseInt(args[++i], 10)
         if (Number.isNaN(options.timeout) || options.timeout < 0) {
@@ -198,8 +197,7 @@ export function parseHeadlessArgs(argv: string[]): HeadlessOptions {
       } else if (arg === '--bare') {
         options.bare = true
       }
-    } else if (!positionalStarted) {
-      positionalStarted = true
+    } else if (options.command === 'auto') {
       options.command = arg
     } else {
       options.commandArgs.push(arg)

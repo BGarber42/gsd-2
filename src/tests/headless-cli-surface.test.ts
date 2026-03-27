@@ -54,13 +54,12 @@ function parseHeadlessArgs(argv: string[]): HeadlessOptions {
   }
 
   const args = argv.slice(2)
-  let positionalStarted = false
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
     if (arg === 'headless') continue
 
-    if (!positionalStarted && arg.startsWith('--')) {
+    if (arg.startsWith('--')) {
       if (arg === '--timeout' && i + 1 < args.length) {
         options.timeout = parseInt(args[++i], 10)
       } else if (arg === '--json') {
@@ -108,8 +107,7 @@ function parseHeadlessArgs(argv: string[]): HeadlessOptions {
       } else if (arg === '--bare') {
         options.bare = true
       }
-    } else if (!positionalStarted) {
-      positionalStarted = true
+    } else if (options.command === 'auto') {
       options.command = arg
     } else {
       options.commandArgs.push(arg)
@@ -370,6 +368,46 @@ test('--bare combined with --output-format json', () => {
   assert.equal(opts.outputFormat, 'json')
   assert.equal(opts.json, true)
   assert.equal(opts.command, 'auto')
+})
+
+// ─── Command-first ordering (flags after command) ─────────────────────────
+
+test('command before flags: new-milestone --context-text --auto --verbose', () => {
+  const opts = parseHeadlessArgs([
+    'node', 'gsd', 'headless',
+    'new-milestone',
+    '--context-text', 'build something cool',
+    '--auto',
+    '--verbose',
+  ])
+  assert.equal(opts.command, 'new-milestone')
+  assert.equal(opts.contextText, 'build something cool')
+  assert.equal(opts.auto, true)
+  assert.equal(opts.verbose, true)
+})
+
+test('command before flags: next --json --timeout', () => {
+  const opts = parseHeadlessArgs([
+    'node', 'gsd', 'headless',
+    'next',
+    '--json',
+    '--timeout', '60000',
+  ])
+  assert.equal(opts.command, 'next')
+  assert.equal(opts.json, true)
+  assert.equal(opts.timeout, 60000)
+})
+
+test('command between flags: --auto new-milestone --verbose', () => {
+  const opts = parseHeadlessArgs([
+    'node', 'gsd', 'headless',
+    '--auto',
+    'new-milestone',
+    '--verbose',
+  ])
+  assert.equal(opts.command, 'new-milestone')
+  assert.equal(opts.auto, true)
+  assert.equal(opts.verbose, true)
 })
 
 test('--bare does not affect other flags', () => {
