@@ -6,6 +6,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.54.0] - 2026-03-27
+
+### Added
+- Headless Integration Hardening & Release (M002) (#2811)
+- **parallel**: add real-time TUI monitor dashboard with self-healing (#2799)
+
 ## [2.53.0] - 2026-03-27
 
 ### Added
@@ -2073,7 +2079,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - License updated to MIT
 
-[Unreleased]: https://github.com/gsd-build/gsd-2/compare/v2.53.0...HEAD
+[Unreleased]: https://github.com/gsd-build/gsd-2/compare/v2.54.0...HEAD
+[2.54.0]: https://github.com/gsd-build/gsd-2/compare/v2.53.0...v2.54.0
 [2.53.0]: https://github.com/gsd-build/gsd-2/compare/v2.52.0...v2.53.0
 [2.52.0]: https://github.com/gsd-build/gsd-2/compare/v2.51.0...v2.52.0
 [2.51.0]: https://github.com/gsd-build/gsd-2/compare/v2.50.0...v2.51.0
