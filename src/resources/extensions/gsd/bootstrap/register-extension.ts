@@ -104,6 +104,13 @@ export function registerGsdExtension(pi: ExtensionAPI): void {
     ["exec-tools", () => registerExecTools(pi)],
     ["shortcuts", () => registerShortcuts(pi)],
     ["hooks", () => registerHooks(pi, ecosystemHandlers)],
+    ["cmux-events", () => {
+      // cmux is a library (no pi), so gsd sets up the event listeners on its
+      // behalf using the shared event channel contract.
+      void import("../../cmux/index.js").then(({ initCmuxEventListeners }) => {
+        initCmuxEventListeners(pi.events);
+      });
+    }],
     ["ecosystem", () => {
       void loadEcosystemExtensions(pi, ecosystemHandlers).catch((err) => {
         logWarning(
