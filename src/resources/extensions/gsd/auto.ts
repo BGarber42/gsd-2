@@ -1061,6 +1061,11 @@ export async function startAuto(
   verboseMode: boolean,
   options?: { step?: boolean },
 ): Promise<void> {
+  if (s.active) {
+    debugLog("startAuto", { phase: "already-active", skipping: true });
+    return;
+  }
+
   const requestedStepMode = options?.step ?? false;
 
   // Escape stale worktree cwd from a previous milestone (#608).

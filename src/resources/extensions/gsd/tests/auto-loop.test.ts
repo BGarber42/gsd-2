@@ -1195,6 +1195,24 @@ test("startAuto calls selfHealRuntimeRecords before autoLoop (#1727)", { skip: "
   );
 });
 
+test("startAuto guards against concurrent invocation (#2923)", () => {
+  const src = readFileSync(
+    resolve(import.meta.dirname, "..", "auto.ts"),
+    "utf-8",
+  );
+  const fnIdx = src.indexOf("export async function startAuto");
+  assert.ok(fnIdx > -1, "startAuto must exist in auto.ts");
+  // The guard must appear before any other logic in the function body
+  const fnBody = src.slice(fnIdx, fnIdx + 500);
+  const activeGuard = fnBody.indexOf("if (s.active)");
+  assert.ok(activeGuard > -1, "startAuto must check s.active to prevent concurrent auto-loops");
+  const returnIdx = fnBody.indexOf("return;", activeGuard);
+  assert.ok(
+    returnIdx > -1 && returnIdx < activeGuard + 120,
+    "s.active guard must early-return to prevent a second concurrent loop",
+  );
+});
+
 test("agent_end handler calls resolveAgentEnd (not handleAgentEnd)", () => {
   const hooksSrc = readFileSync(
     resolve(import.meta.dirname, "..", "bootstrap", "register-hooks.ts"),
