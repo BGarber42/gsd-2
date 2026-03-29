@@ -39,8 +39,8 @@ import { execCommand } from "../exec.js";
 import { getUntrustedExtensionPaths } from "./project-trust.js";
 export { isProjectTrusted, trustProject, getUntrustedExtensionPaths } from "./project-trust.js";
 import { registerToolCompatibility } from "../tools/tool-compatibility-registry.js";
-import { mergeExtensionEntryPaths } from "../../../../../src/extension-discovery.js";
-import { sortExtensionPaths } from "../../../../../src/extension-sort.js";
+import { mergeExtensionEntryPaths } from "./extension-discovery.js";
+import { sortExtensionPaths } from "./extension-sort.js";
 import type {
 	Extension,
 	ExtensionAPI,
