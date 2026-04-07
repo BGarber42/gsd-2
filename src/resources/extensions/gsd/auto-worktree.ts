@@ -770,6 +770,9 @@ export function syncWorktreeStateBack(
       .map((d) => d.name);
 
     for (const mid of wtMilestones) {
+      // Skip the current milestone being merged — its files are already in the
+      // milestone branch and would conflict with the squash merge (#3641).
+      if (mid === milestoneId) continue;
       syncMilestoneDir(wtGsd, mainGsd, mid, synced);
     }
   } catch (err) {
