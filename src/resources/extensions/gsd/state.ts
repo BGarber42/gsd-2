@@ -304,12 +304,9 @@ function extractContextTitle(content: string | null, fallback: string): string {
 
 // ─── DB-backed State Derivation ────────────────────────────────────────────
 
-/**
- * Helper: check if a DB status counts as "done" (handles K002 ambiguity).
- */
-function isStatusDone(status: string): boolean {
-  return status === 'complete' || status === 'done' || status === 'skipped';
-}
+// isStatusDone replaced by isClosedStatus from status-guards.ts (single source of truth).
+// Alias kept for backward compatibility within this file.
+const isStatusDone = isClosedStatus;
 
 /**
  * Derive GSD state from the milestones/slices/tasks DB tables.

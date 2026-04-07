@@ -19,10 +19,11 @@ export function getSessionId(): string {
 // ─── Event Types ─────────────────────────────────────────────────────────
 
 export interface WorkflowEvent {
-  cmd: string;           // e.g. "complete_task"
+  v?: number;              // schema version — omitted in v1 (legacy), 2 for current format
+  cmd: string;             // e.g. "complete-task" (canonical: hyphens; legacy: underscores — both accepted by replay)
   params: Record<string, unknown>;
-  ts: string;            // ISO 8601
-  hash: string;          // content hash (hex, 16 chars)
+  ts: string;              // ISO 8601
+  hash: string;            // content hash (hex, 16 chars)
   actor: "agent" | "system";
   actor_name?: string;      // e.g. "executor-agent-01" — caller-provided identity
   trigger_reason?: string;  // e.g. "plan-phase complete" — caller-provided causation
@@ -46,6 +47,7 @@ export function appendEvent(
     .slice(0, 16);
 
   const fullEvent: WorkflowEvent = {
+    v: 2,
     ...event,
     hash,
     session_id: ENGINE_SESSION_ID,

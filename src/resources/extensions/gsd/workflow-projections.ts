@@ -16,6 +16,7 @@ import { atomicWriteSync } from "./atomic-write.js";
 import { join } from "node:path";
 import { mkdirSync, existsSync } from "node:fs";
 import { logWarning } from "./workflow-logger.js";
+import { isClosedStatus } from "./status-guards.js";
 import { deriveState } from "./state.js";
 import type { GSDState } from "./types.js";
 
@@ -55,7 +56,7 @@ export function renderPlanContent(sliceRow: SliceRow, taskRows: TaskRow[]): stri
   lines.push("## Tasks");
 
   for (const task of taskRows) {
-    const checkbox = task.status === "done" || task.status === "complete" ? "[x]" : "[ ]";
+    const checkbox = isClosedStatus(task.status) ? "[x]" : "[ ]";
     lines.push(`- ${checkbox} **${task.id}: ${task.title}** \u2014 ${task.description}`);
 
     // Estimate subline (always present if non-empty)
@@ -125,7 +126,7 @@ export function renderRoadmapContent(milestoneRow: MilestoneRow, sliceRows: Slic
   lines.push("|----|-------|------|---------|------|------------|");
 
   for (const slice of sliceRows) {
-    const done = slice.status === "done" || slice.status === "complete" ? "\u2705" : "\u2B1C";
+    const done = isClosedStatus(slice.status) ? "\u2705" : "\u2B1C";
 
     // depends is already parsed to string[] by rowToSlice
     let depends = "\u2014";
