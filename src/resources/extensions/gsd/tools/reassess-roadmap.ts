@@ -186,8 +186,10 @@ export async function handleReassessRoadmap(
         });
       }
 
-      // Insert new slices
-      for (const added of params.sliceChanges.added) {
+      // Insert new slices — assign sequence after existing slices (#3356)
+      const existingCount = getMilestoneSlices(params.milestoneId).length;
+      for (let i = 0; i < params.sliceChanges.added.length; i++) {
+        const added = params.sliceChanges.added[i]!;
         insertSlice({
           id: added.sliceId,
           milestoneId: params.milestoneId,
@@ -196,6 +198,7 @@ export async function handleReassessRoadmap(
           risk: added.risk,
           depends: added.depends,
           demo: added.demo ?? "",
+          sequence: existingCount + i + 1,
         });
       }
 
