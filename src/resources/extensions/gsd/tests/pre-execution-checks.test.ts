@@ -391,13 +391,13 @@ describe("checkFilePathConsistency with path normalization", () => {
 });
 
 describe("checkTaskOrdering with path normalization", () => {
-  test("./path triggers ordering check for path in expected_output", () => {
+  test("./path in inputs triggers ordering check for path in expected_output", () => {
     const tasks = [
       createTask({
         id: "T01",
         sequence: 0,
-        files: ["./generated.ts"], // Reads with ./
-        inputs: [],
+        files: [],
+        inputs: ["./generated.ts"], // Reads with ./
         expected_output: [],
       }),
       createTask({
@@ -415,13 +415,13 @@ describe("checkTaskOrdering with path normalization", () => {
     assert.ok(results[0].message.includes("T02"));
   });
 
-  test("path triggers ordering check for ./path in expected_output", () => {
+  test("path in inputs triggers ordering check for ./path in expected_output", () => {
     const tasks = [
       createTask({
         id: "T01",
         sequence: 0,
-        files: ["generated.ts"], // Reads without ./
-        inputs: [],
+        files: [],
+        inputs: ["generated.ts"], // Reads without ./
         expected_output: [],
       }),
       createTask({
@@ -486,13 +486,13 @@ describe("checkTaskOrdering", () => {
     assert.deepEqual(results, []);
   });
 
-  test("fails when task reads file created by later task", () => {
+  test("fails when task inputs reference file created by later task", () => {
     const tasks = [
       createTask({
         id: "T01",
         sequence: 0,
-        files: ["generated.ts"], // Reads file that doesn't exist yet
-        inputs: [],
+        files: [],
+        inputs: ["generated.ts"], // Reads file that doesn't exist yet
         expected_output: [],
       }),
       createTask({
@@ -537,13 +537,13 @@ describe("checkTaskOrdering", () => {
     assert.ok(results[0].message.includes("schema.json"));
   });
 
-  test("handles multiple ordering violations", () => {
+  test("handles multiple ordering violations via inputs", () => {
     const tasks = [
       createTask({
         id: "T01",
         sequence: 0,
-        files: ["a.ts", "b.ts"],
-        inputs: [],
+        files: [],
+        inputs: ["a.ts", "b.ts"],
         expected_output: [],
       }),
       createTask({
@@ -949,6 +949,201 @@ function check(a: number): void
       const result = await runPreExecutionChecks([], tempDir);
       assert.equal(result.status, "pass");
       assert.deepEqual(result.checks, []);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ─── Regression Tests: checkTaskOrdering false positive (#3677) ──────────────
+
+describe("checkTaskOrdering false positive regression (#3677)", () => {
+  test("task.files should not trigger ordering violation when file is in later expected_output", () => {
+    // T01 has files: ["component.tsx"] — this is a file the task will CREATE,
+    // not read. Including task.files in the ordering check causes a false positive.
+    // After fix (check only task.inputs), this should return 0 results.
+    const tasks = [
+      createTask({
+        id: "T01",
+        sequence: 0,
+        files: ["component.tsx"],
+        inputs: [],
+        expected_output: [],
+      }),
+      createTask({
+        id: "T02",
+        sequence: 1,
+        files: [],
+        inputs: [],
+        expected_output: ["component.tsx"],
+      }),
+    ];
+
+    const results = checkTaskOrdering(tasks, "/tmp");
+    assert.equal(results.length, 0, "task.files should not be checked for ordering violations");
+  });
+
+  test("task.files with multiple files should not trigger false positives", () => {
+    // T01 lists several files it will touch/create — none should trigger ordering
+    // violations just because T02 declares one of them as expected_output.
+    const tasks = [
+      createTask({
+        id: "T01",
+        sequence: 0,
+        files: ["a.ts", "b.ts", "c.ts"],
+        inputs: [],
+        expected_output: [],
+      }),
+      createTask({
+        id: "T02",
+        sequence: 1,
+        files: [],
+        inputs: [],
+        expected_output: ["b.ts"],
+      }),
+    ];
+
+    const results = checkTaskOrdering(tasks, "/tmp");
+    assert.equal(results.length, 0, "Multiple task.files should not generate false positive violations");
+  });
+
+  test("task.inputs SHOULD still trigger ordering violation", () => {
+    // task.inputs represents files a task genuinely needs to READ, so a sequence
+    // violation here is a real error and must still be detected.
+    const tasks = [
+      createTask({
+        id: "T01",
+        sequence: 0,
+        files: [],
+        inputs: ["config.json"],
+        expected_output: [],
+      }),
+      createTask({
+        id: "T02",
+        sequence: 1,
+        files: [],
+        inputs: [],
+        expected_output: ["config.json"],
+      }),
+    ];
+
+    const results = checkTaskOrdering(tasks, "/tmp");
+    assert.equal(results.length, 1, "task.inputs ordering violation must still be detected");
+    assert.equal(results[0].blocking, true);
+    assert.ok(results[0].message.includes("T01"));
+    assert.ok(results[0].message.includes("T02"));
+    assert.ok(results[0].message.includes("sequence violation"));
+  });
+
+  test("mixed files and inputs — only inputs trigger ordering violation", () => {
+    // T01 will create "created.ts" (files) and also needs to READ "needed.json" (inputs).
+    // T02 creates both. Only the inputs dependency is a real violation.
+    const tasks = [
+      createTask({
+        id: "T01",
+        sequence: 0,
+        files: ["created.ts"],
+        inputs: ["needed.json"],
+        expected_output: [],
+      }),
+      createTask({
+        id: "T02",
+        sequence: 1,
+        files: [],
+        inputs: [],
+        expected_output: ["created.ts", "needed.json"],
+      }),
+    ];
+
+    const results = checkTaskOrdering(tasks, "/tmp");
+    assert.equal(results.length, 1, "Only the inputs entry should produce a violation, not files");
+    assert.ok(results[0].target === "needed.json", "Violation target should be the input, not the file");
+  });
+
+  test("task.files with normalized paths should not false-positive", () => {
+    // Path normalization (./src/new-file.ts → src/new-file.ts) should not cause
+    // task.files to match against expected_output and produce a false positive.
+    const tasks = [
+      createTask({
+        id: "T01",
+        sequence: 0,
+        files: ["./src/new-file.ts"],
+        inputs: [],
+        expected_output: [],
+      }),
+      createTask({
+        id: "T02",
+        sequence: 1,
+        files: [],
+        inputs: [],
+        expected_output: ["src/new-file.ts"],
+      }),
+    ];
+
+    const results = checkTaskOrdering(tasks, "/tmp");
+    assert.equal(results.length, 0, "Normalized task.files path should not trigger a false positive");
+  });
+});
+
+// ─── checkFilePathConsistency additional edge cases ──────────────────────────
+
+describe("checkFilePathConsistency additional edge cases", () => {
+  test("inputs referencing glob-like patterns should not crash", () => {
+    // A glob pattern in inputs is unusual but should be handled gracefully.
+    // The file won't exist on disk, so it should produce a blocking result.
+    const tasks = [
+      createTask({
+        id: "T01",
+        files: [],
+        inputs: ["src/**/*.ts"],
+        expected_output: [],
+      }),
+    ];
+
+    // Should not throw
+    let results: ReturnType<typeof checkFilePathConsistency>;
+    assert.doesNotThrow(() => {
+      results = checkFilePathConsistency(tasks, "/tmp");
+    });
+    assert.equal(results!.length, 1, "Glob-pattern input that doesn't exist should produce a blocking result");
+    assert.equal(results![0].blocking, true);
+  });
+
+  test("empty inputs array produces no results", () => {
+    // A task with no inputs and only files should produce zero results from
+    // consistency check — files are not checked (#3626).
+    const tasks = [
+      createTask({
+        id: "T01",
+        files: ["anything.ts"],
+        inputs: [],
+        expected_output: [],
+      }),
+    ];
+
+    const results = checkFilePathConsistency(tasks, "/tmp");
+    assert.equal(results.length, 0, "Empty inputs should produce no consistency check results");
+  });
+
+  test("inputs with absolute paths are checked correctly", () => {
+    // An absolute path in inputs should resolve to itself and pass when the file exists.
+    const tempDir = join(tmpdir(), `pre-exec-test-abs-${Date.now()}`);
+    mkdirSync(tempDir, { recursive: true });
+    const absFilePath = join(tempDir, "real-file.ts");
+    writeFileSync(absFilePath, "// content");
+
+    try {
+      const tasks = [
+        createTask({
+          id: "T01",
+          files: [],
+          inputs: [absFilePath],
+          expected_output: [],
+        }),
+      ];
+
+      const results = checkFilePathConsistency(tasks, tempDir);
+      assert.equal(results.length, 0, "Absolute path to an existing file should pass consistency check");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

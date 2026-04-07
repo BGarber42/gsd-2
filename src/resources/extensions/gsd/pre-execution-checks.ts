@@ -350,10 +350,12 @@ export function checkTaskOrdering(
     }
   }
 
-  // Check each task's inputs against file creators
+  // Check each task's inputs against file creators.
+  // Only check task.inputs — task.files ("files likely touched") intentionally
+  // includes files the task will create, so they don't indicate read-before-create (#3677).
   for (let i = 0; i < tasks.length; i++) {
     const task = tasks[i];
-    const filesToCheck = [...task.files, ...task.inputs];
+    const filesToCheck = [...task.inputs];
 
     for (const file of filesToCheck) {
       const normalizedFile = normalizeFilePath(file);
