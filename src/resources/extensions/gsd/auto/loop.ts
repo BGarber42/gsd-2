@@ -46,7 +46,7 @@ export async function autoLoop(
 ): Promise<void> {
   debugLog("autoLoop", { phase: "enter" });
   let iteration = 0;
-  const loopState: LoopState = { recentUnits: [], stuckRecoveryAttempts: 0 };
+  const loopState: LoopState = { recentUnits: [], stuckRecoveryAttempts: 0, consecutiveFinalizeTimeouts: 0 };
   let consecutiveErrors = 0;
   const recentErrorMessages: string[] = [];
 
@@ -247,7 +247,7 @@ export async function autoLoop(
 
       // ── Phase 5: Finalize ───────────────────────────────────────────────
 
-      const finalizeResult = await runFinalize(ic, iterData, sidecarItem);
+      const finalizeResult = await runFinalize(ic, iterData, loopState, sidecarItem);
       if (finalizeResult.action === "break") break;
       if (finalizeResult.action === "continue") continue;
 

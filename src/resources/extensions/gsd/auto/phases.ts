@@ -15,6 +15,7 @@ import type { PostUnitContext, PreVerificationOpts } from "../auto-post-unit.js"
 import {
   MAX_RECOVERY_CHARS,
   BUDGET_THRESHOLDS,
+  MAX_FINALIZE_TIMEOUTS,
   type PhaseResult,
   type IterationContext,
   type LoopState,
@@ -1427,6 +1428,7 @@ export async function runUnitPhase(
 export async function runFinalize(
   ic: IterationContext,
   iterData: IterationData,
+  loopState: LoopState,
   sidecarItem?: SidecarItem,
 ): Promise<PhaseResult> {
   const { ctx, pi, s, deps } = ic;
@@ -1453,12 +1455,19 @@ export async function runFinalize(
   // Timeout guard: if postUnitPreVerification hangs (e.g., safety harness
   // deadlock, browser teardown hang, worktree sync stall), force-continue
   // after timeout so the auto-loop is not permanently frozen (#3757).
+  //
+  // On timeout, null out s.currentUnit so the timed-out task's late async
+  // mutations are harmless — postUnitPreVerification guards all side effects
+  // behind `if (s.currentUnit)`. The next iteration sets a fresh currentUnit.
   // Sidecar items use lightweight pre-verification opts
   const preVerificationOpts: PreVerificationOpts | undefined = sidecarItem
     ? sidecarItem.kind === "hook"
       ? { skipSettleDelay: true, skipWorktreeSync: true }
       : { skipSettleDelay: true }
     : undefined;
+  const preUnitSnapshot = s.currentUnit
+    ? { type: s.currentUnit.type, id: s.currentUnit.id, startedAt: s.currentUnit.startedAt }
+    : null;
   const preResultGuard = await withTimeout(
     deps.postUnitPreVerification(postUnitCtx, preVerificationOpts),
     FINALIZE_PRE_TIMEOUT_MS,
@@ -1466,14 +1475,29 @@ export async function runFinalize(
   );
 
   if (preResultGuard.timedOut) {
+    // Detach session from the timed-out unit so late async completions
+    // cannot mutate state for the next unit (#3757).
+    s.currentUnit = null;
+    loopState.consecutiveFinalizeTimeouts++;
     debugLog("autoLoop", {
       phase: "pre-verification-timeout",
       iteration: ic.iteration,
       unitType: iterData.unitType,
       unitId: iterData.unitId,
+      consecutiveTimeouts: loopState.consecutiveFinalizeTimeouts,
     });
+
+    if (loopState.consecutiveFinalizeTimeouts >= MAX_FINALIZE_TIMEOUTS) {
+      ctx.ui.notify(
+        `postUnitPreVerification timed out ${loopState.consecutiveFinalizeTimeouts} consecutive times — stopping auto-mode to prevent budget waste`,
+        "error",
+      );
+      await deps.stopAuto(ctx, pi, `${loopState.consecutiveFinalizeTimeouts} consecutive finalize timeouts`);
+      return { action: "break", reason: "finalize-timeout-escalation" };
+    }
+
     ctx.ui.notify(
-      `postUnitPreVerification timed out after ${FINALIZE_PRE_TIMEOUT_MS / 1000}s for ${iterData.unitType} ${iterData.unitId} — continuing to next iteration`,
+      `postUnitPreVerification timed out after ${FINALIZE_PRE_TIMEOUT_MS / 1000}s for ${iterData.unitType} ${iterData.unitId} (${loopState.consecutiveFinalizeTimeouts}/${MAX_FINALIZE_TIMEOUTS}) — continuing to next iteration`,
       "warning",
     );
     return { action: "next", data: undefined as void };
@@ -1548,14 +1572,29 @@ export async function runFinalize(
   );
 
   if (postResultGuard.timedOut) {
+    // Detach session from the timed-out unit so late async completions
+    // cannot mutate state for the next unit (#3757).
+    s.currentUnit = null;
+    loopState.consecutiveFinalizeTimeouts++;
     debugLog("autoLoop", {
       phase: "post-verification-timeout",
       iteration: ic.iteration,
       unitType: iterData.unitType,
       unitId: iterData.unitId,
+      consecutiveTimeouts: loopState.consecutiveFinalizeTimeouts,
     });
+
+    if (loopState.consecutiveFinalizeTimeouts >= MAX_FINALIZE_TIMEOUTS) {
+      ctx.ui.notify(
+        `postUnitPostVerification timed out ${loopState.consecutiveFinalizeTimeouts} consecutive times — stopping auto-mode to prevent budget waste`,
+        "error",
+      );
+      await deps.stopAuto(ctx, pi, `${loopState.consecutiveFinalizeTimeouts} consecutive finalize timeouts`);
+      return { action: "break", reason: "finalize-timeout-escalation" };
+    }
+
     ctx.ui.notify(
-      `postUnitPostVerification timed out after ${FINALIZE_POST_TIMEOUT_MS / 1000}s for ${iterData.unitType} ${iterData.unitId} — continuing to next iteration`,
+      `postUnitPostVerification timed out after ${FINALIZE_POST_TIMEOUT_MS / 1000}s for ${iterData.unitType} ${iterData.unitId} (${loopState.consecutiveFinalizeTimeouts}/${MAX_FINALIZE_TIMEOUTS}) — continuing to next iteration`,
       "warning",
     );
     return { action: "next", data: undefined as void };
@@ -1576,6 +1615,9 @@ export async function runFinalize(
     debugLog("autoLoop", { phase: "exit", reason: "step-wizard" });
     return { action: "break", reason: "step-wizard" };
   }
+
+  // Both pre and post verification completed without timeout — reset counter
+  loopState.consecutiveFinalizeTimeouts = 0;
 
   return { action: "next", data: undefined as void };
 }
