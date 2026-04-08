@@ -208,8 +208,9 @@ export function auditOrphanedMilestoneBranches(
         // Try git worktree remove first (handles registered worktrees)
         try {
           nativeWorktreeRemove(basePath, wtDir, true);
-        } catch {
+        } catch (e) {
           // Not a registered worktree — expected for orphaned dirs
+          logWarning("engine", `worktree remove failed (expected for orphaned dirs): ${e instanceof Error ? e.message : String(e)}`);
         }
 
         // If the directory still exists after git worktree remove (either it
