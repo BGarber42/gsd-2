@@ -695,7 +695,7 @@ export async function postUnitPostVerification(pctx: PostUnitContext): Promise<"
         });
       }
     } catch (e) {
-      logWarning("postUnit", `CODEBASE refresh failed: ${(e as Error).message}`);
+      logWarning("engine", `CODEBASE refresh failed: ${(e as Error).message}`);
     }
   }
 
