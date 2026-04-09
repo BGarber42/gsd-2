@@ -198,12 +198,14 @@ test("runUnit keeps the session-switch guard across a late newSession settlement
   try {
     const ctx = makeMockCtx();
     const pi = makeMockPi();
-    const firstSession = makeMockSession({ newSessionDelayMs: 60_000 });
-    const secondSession = makeMockSession({ newSessionDelayMs: 60_000 });
+    // Use delays longer than NEW_SESSION_TIMEOUT_MS (120s) so the timeout fires
+    const firstSession = makeMockSession({ newSessionDelayMs: 200_000 });
+    const secondSession = makeMockSession({ newSessionDelayMs: 200_000 });
 
     const firstRun = runUnit(ctx, pi, firstSession, "task", "T01", "prompt");
 
-    mock.timers.tick(30_000);
+    // Tick past the 120s session timeout
+    mock.timers.tick(121_000);
     await Promise.resolve();
 
     const firstResult = await firstRun;
@@ -213,7 +215,7 @@ test("runUnit keeps the session-switch guard across a late newSession settlement
     mock.timers.tick(1);
     const secondRun = runUnit(ctx, pi, secondSession, "task", "T02", "prompt");
 
-    mock.timers.tick(29_999);
+    mock.timers.tick(100_000);
     await Promise.resolve();
     assert.equal(
       isSessionSwitchInFlight(),
@@ -221,11 +223,16 @@ test("runUnit keeps the session-switch guard across a late newSession settlement
       "late settlement from the first session must not clear the newer session guard",
     );
 
-    mock.timers.tick(30_001);
+    // Tick past the second session's timeout (121s total > 120s NEW_SESSION_TIMEOUT_MS)
+    mock.timers.tick(21_001);
     await Promise.resolve();
 
     const secondResult = await secondRun;
     assert.equal(secondResult.status, "cancelled");
+
+    // Tick past the second session's delayed promise (200s) so .finally() fires
+    mock.timers.tick(80_000);
+    await Promise.resolve();
     assert.equal(isSessionSwitchInFlight(), false, "guard should clear after the newer session settles");
   } finally {
     mock.timers.reset();
