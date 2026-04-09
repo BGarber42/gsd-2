@@ -152,6 +152,32 @@ export function makeStreamExhaustedErrorMessage(model: string, lastTextContent: 
 	return message;
 }
 
+/**
+ * Claude Code executes its own internal tool loop inside the SDK call. The
+ * final assistant message should therefore contain only user-facing content
+ * (text/thinking), not replayable toolCall blocks that GSD would render again.
+ */
+export function buildFinalClaudeCodeContent(
+	blocks: AssistantMessage["content"],
+	lastThinkingContent: string,
+	lastTextContent: string,
+	resultText?: string,
+): AssistantMessage["content"] {
+	const finalContent = blocks.filter((block) => block.type === "text" || block.type === "thinking");
+	if (finalContent.length > 0) return finalContent;
+
+	if (lastThinkingContent) {
+		finalContent.push({ type: "thinking", thinking: lastThinkingContent });
+	}
+	if (lastTextContent) {
+		finalContent.push({ type: "text", text: lastTextContent });
+	}
+	if (finalContent.length === 0 && resultText) {
+		finalContent.push({ type: "text", text: resultText });
+	}
+	return finalContent;
+}
+
 // ---------------------------------------------------------------------------
 // SDK options builder
 // ---------------------------------------------------------------------------
@@ -211,8 +237,6 @@ async function pumpSdkMessages(
 	/** Track the last text content seen across all assistant turns for the final message. */
 	let lastTextContent = "";
 	let lastThinkingContent = "";
-	/** Collect tool calls from intermediate SDK turns for tool_execution events. */
-	const intermediateToolCalls: AssistantMessage["content"] = [];
 
 	try {
 		// Dynamic import — the SDK is an optional dependency.
@@ -318,9 +342,6 @@ async function pumpSdkMessages(
 								lastTextContent = block.text;
 							} else if (block.type === "thinking" && block.thinking) {
 								lastThinkingContent = block.thinking;
-							} else if (block.type === "toolCall") {
-								// Collect tool calls for externalToolExecution rendering
-								intermediateToolCalls.push(block);
 							}
 						}
 					}
@@ -331,35 +352,12 @@ async function pumpSdkMessages(
 				// -- Result (terminal) --
 				case "result": {
 					const result = msg as SDKResultMessage;
-
-					// Build final message. Include intermediate tool calls so the
-					// agent loop's externalToolExecution path emits tool_execution
-					// events for proper TUI rendering, followed by the text response.
-					const finalContent: AssistantMessage["content"] = [];
-
-					// Add tool calls from intermediate turns first (renders above text)
-					finalContent.push(...intermediateToolCalls);
-
-					// Add text/thinking from the last turn
-					if (builder && builder.message.content.length > 0) {
-						for (const block of builder.message.content) {
-							if (block.type === "text" || block.type === "thinking") {
-								finalContent.push(block);
-							}
-						}
-					} else {
-						if (lastThinkingContent) {
-							finalContent.push({ type: "thinking", thinking: lastThinkingContent });
-						}
-						if (lastTextContent) {
-							finalContent.push({ type: "text", text: lastTextContent });
-						}
-					}
-
-					// Fallback: use the SDK's result text if we have no content
-					if (finalContent.length === 0 && result.subtype === "success" && result.result) {
-						finalContent.push({ type: "text", text: result.result });
-					}
+					const finalContent = buildFinalClaudeCodeContent(
+						builder?.message.content ?? [],
+						lastThinkingContent,
+						lastTextContent,
+						result.subtype === "success" ? result.result : undefined,
+					);
 
 					const finalMessage: AssistantMessage = {
 						role: "assistant",

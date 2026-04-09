@@ -1,10 +1,11 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import {
-	makeStreamExhaustedErrorMessage,
 	buildPromptFromContext,
+	buildFinalClaudeCodeContent,
 	buildSdkOptions,
 	getClaudeLookupCommand,
+	makeStreamExhaustedErrorMessage,
 	parseClaudeLookupOutput,
 } from "../stream-adapter.ts";
 import type { Context, Message } from "@gsd/pi-ai";
@@ -126,6 +127,37 @@ describe("stream-adapter — session persistence (#2859)", () => {
 			Array.isArray(opusOpts.betas) && opusOpts.betas.length === 0,
 			"non-sonnet models should have empty betas",
 		);
+	});
+});
+
+describe("stream-adapter — final content filtering (#3861)", () => {
+	test("buildFinalClaudeCodeContent strips intermediate tool calls from the final assistant message", () => {
+		const finalContent = buildFinalClaudeCodeContent(
+			[
+				{ type: "toolCall", id: "tc_1", name: "Read", arguments: {} },
+				{ type: "thinking", thinking: "Planning next step" },
+				{ type: "text", text: "Done." },
+			] as any,
+			"",
+			"",
+		);
+
+		assert.deepEqual(finalContent, [
+			{ type: "thinking", thinking: "Planning next step" },
+			{ type: "text", text: "Done." },
+		]);
+	});
+
+	test("buildFinalClaudeCodeContent falls back to cached text when the final turn only had tool calls", () => {
+		const finalContent = buildFinalClaudeCodeContent(
+			[
+				{ type: "toolCall", id: "tc_2", name: "Edit", arguments: { file_path: "app.ts" } },
+			] as any,
+			"",
+			"User-facing answer",
+		);
+
+		assert.deepEqual(finalContent, [{ type: "text", text: "User-facing answer" }]);
 	});
 });
 
