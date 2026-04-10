@@ -6,6 +6,69 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.68.0] - 2026-04-10
+
+### Added
+- expose slice replanning over workflow MCP
+- expose milestone workflow tools over MCP
+- expose slice completion over workflow MCP
+- expose task completion alias over workflow MCP
+- expose GSD planning tools over MCP
+- gate workflow MCP units by provider transport capabilities
+- expose core GSD workflow tools over MCP
+- add contextual tips system for TUI and web terminal
+
+### Fixed
+- **state**: prevent false degraded-mode warning when DB not yet initialized
+- **gsd**: use debugLog in catch block to satisfy empty-catch lint
+- **gsd**: avoid false manifest and skipped-slice warnings
+- **gsd**: replace empty catch block with descriptive comment
+- guard autoCommitDirtyState and restore cwd on MergeConflictError (#2929)
+- Claude Code MCP tool output rendering and real-time streaming
+- **gsd**: surface warnings when DB or STATE.md init fails
+- **gsd**: create gsd.db, runtime/, and STATE.md during init (#3880)
+- **gsd**: suppress workflow stderr during /gsd
+- **gsd**: enforce workflow write gates over MCP
+- restore autoStartTime on resume + replace empty catch blocks (#3585)
+- **mcp**: harden workflow tool boundary
+- **gsd**: accept em-dash none verification rationale
+- **gsd**: resync managed resources on auto resume
+- **gsd**: stop stale forensics context hijacks
+- **gsd**: serialize workflow MCP execution state
+- **gsd**: restore milestone status db preflight
+- **claude-code-cli**: suppress streamed internal tool noise
+- **gsd**: skip same-path planning artifact copies
+- **claude-code-cli**: suppress internal tool call noise
+- **pi-coding-agent**: avoid oauth login for api-key providers
+- **gsd**: snapshot new untracked files before dispatch
+- **platform**: harden command execution and stabilize onboarding sync
+- **pi-ai**: restore event stream factory export
+- **gsd**: use valid codebase refresh logger
+- **gsd**: auto-refresh codebase cache
+- **gsd**: align model switching and prefs surfaces
+- route slice and validation artifacts through DB tools
+- make gsd_complete_task the only execute-task summary path
+- **docs**: stop pointing repo documentation to gsd.build
+- add activeEngineId and activeRunDir to PausedSessionMetadata interface
+- **gsd**: address QA round 4
+- **gsd**: address QA round 3
+- **gsd**: address QA round 2
+- **gsd**: address QA round 1
+- **gsd**: address review feedback from trek-e
+- **gsd**: assess recovery from paused worktree state
+- **gsd**: satisfy extension typecheck for interrupted recovery
+- **gsd**: restore hook dispatch export and guided flow imports
+- **gsd**: clear stale paused metadata in guided flow
+- **gsd**: preserve interrupted-session resume mode
+- preserve explicit interrupted-session resume mode
+- preserve step-mode and suppress stale paused resumes
+- suppress stale interrupted-session resume prompts
+
+### Changed
+- harden workflow MCP executor loading
+- **ci**: add weekly workflow to regenerate model registry
+- **deps**: refresh audited package locks
+
 ## [2.67.0] - 2026-04-09
 
 ### Added
@@ -2601,7 +2664,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - License updated to MIT
 
-[Unreleased]: https://github.com/gsd-build/gsd-2/compare/v2.67.0...HEAD
+[Unreleased]: https://github.com/gsd-build/gsd-2/compare/v2.68.0...HEAD
+[2.68.0]: https://github.com/gsd-build/gsd-2/compare/v2.67.0...v2.68.0
 [2.67.0]: https://github.com/gsd-build/gsd-2/compare/v2.66.1...v2.67.0
 [2.66.1]: https://github.com/gsd-build/gsd-2/compare/v2.66.0...v2.66.1
 [2.66.0]: https://github.com/gsd-build/gsd-2/compare/v2.65.0...v2.66.0
