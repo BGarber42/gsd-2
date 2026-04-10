@@ -446,4 +446,12 @@ export function registerHooks(pi: ExtensionAPI): void {
     // Default: no override — let capability scoring handle selection
     return undefined;
   });
+
+  // Tool set adaptation hook (ADR-005 Phase 4)
+  // Extensions can override tool set after model selection by returning { toolNames: [...] }
+  // Return undefined to let the built-in provider compatibility filtering proceed.
+  pi.on("adjust_tool_set", async (_event) => {
+    // Default: no override — let provider capability filtering handle tool set
+    return undefined;
+  });
 }

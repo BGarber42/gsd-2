@@ -5,6 +5,9 @@
 import type { ComplexityTier, ClassificationResult, TaskMetadata } from "./complexity-classifier.js";
 import { tierOrdinal } from "./complexity-classifier.js";
 import type { ResolvedModelConfig } from "./preferences.js";
+import { getProviderCapabilities, type ProviderCapabilities } from "@gsd/pi-ai";
+import { getToolCompatibility, getAllToolCompatibility } from "@gsd/pi-coding-agent";
+import type { ToolCompatibility } from "@gsd/pi-coding-agent";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -37,6 +40,8 @@ export interface RoutingDecision {
   selectionMethod: "tier-only" | "capability-scored";
   /** Capability scores per eligible model (capability-scored path only) */
   capabilityScores?: Record<string, number>;
+  /** Tools filtered out due to provider incompatibility (ADR-005) */
+  filteredTools?: string[];
   /** Task requirement vector used for scoring */
   taskRequirements?: Partial<Record<string, number>>;
 }
@@ -535,4 +540,72 @@ function getModelCost(modelId: string): number {
 
   // Unknown cost — assume expensive to avoid routing to unknown cheap models
   return 999;
+}
+
+// ─── Tool Compatibility Filter (ADR-005 Phase 3) ───────────────────────────
+
+/**
+ * Check if a tool is compatible with a provider's capabilities.
+ * Returns true if the tool can be used with the provider.
+ */
+export function isToolCompatibleWithProvider(
+  toolName: string,
+  providerCaps: ProviderCapabilities,
+): boolean {
+  const compat = getToolCompatibility(toolName);
+  if (!compat) return true;  // no metadata = always compatible
+
+  // Hard filter: provider doesn't support image tool results
+  if (compat.producesImages && !providerCaps.imageToolResults) return false;
+
+  // Hard filter: tool uses schema features provider doesn't support
+  if (compat.schemaFeatures?.some(f => providerCaps.unsupportedSchemaFeatures.includes(f))) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Filter a list of tool names to only those compatible with a provider.
+ * Used by the routing pipeline to adjust tool sets when switching providers.
+ */
+export function filterToolsForProvider(
+  toolNames: string[],
+  providerApi: string,
+): { compatible: string[]; filtered: string[] } {
+  const providerCaps = getProviderCapabilities(providerApi);
+
+  // Provider doesn't support tool calling at all
+  if (!providerCaps.toolCalling) {
+    return { compatible: [], filtered: toolNames };
+  }
+
+  const compatible: string[] = [];
+  const filtered: string[] = [];
+
+  for (const name of toolNames) {
+    if (isToolCompatibleWithProvider(name, providerCaps)) {
+      compatible.push(name);
+    } else {
+      filtered.push(name);
+    }
+  }
+
+  return { compatible, filtered };
+}
+
+/**
+ * Adjust the active tool set for a selected model's provider capabilities.
+ * Returns tool names that should be active — removes incompatible tools.
+ *
+ * This is a hard filter only — it removes tools that would fail at the
+ * provider level. It does NOT remove tools based on soft heuristics.
+ */
+export function adjustToolSet(
+  activeToolNames: string[],
+  selectedModelApi: string,
+): { toolNames: string[]; removedTools: string[] } {
+  const { compatible, filtered } = filterToolsForProvider(activeToolNames, selectedModelApi);
+  return { toolNames: compatible, removedTools: filtered };
 }

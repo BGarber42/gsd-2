@@ -38,6 +38,7 @@ import type { ExecOptions } from "../exec.js";
 import { execCommand } from "../exec.js";
 import { getUntrustedExtensionPaths } from "./project-trust.js";
 export { isProjectTrusted, trustProject, getUntrustedExtensionPaths } from "./project-trust.js";
+import { registerToolCompatibility } from "../tools/tool-compatibility-registry.js";
 import type {
 	Extension,
 	ExtensionAPI,
@@ -428,8 +429,9 @@ export function createExtensionRuntime(): ExtensionRuntime {
 		unregisterProvider: (name) => {
 			runtime.pendingProviderRegistrations = runtime.pendingProviderRegistrations.filter((r) => r.name !== name);
 		},
-		// Stub replaced by ExtensionRunner at construction time via bindEmitMethods().
+		// Stubs replaced by ExtensionRunner at construction time via bindEmitMethods().
 		emitBeforeModelSelect: async () => undefined,
+		emitAdjustToolSet: async () => undefined,
 	};
 
 	return runtime;
@@ -459,6 +461,10 @@ function createExtensionAPI(
 				definition: tool,
 				extensionPath: extension.path,
 			});
+			// ADR-005: auto-register tool compatibility metadata
+			if (tool.compatibility) {
+				registerToolCompatibility(tool.name, tool.compatibility);
+			}
 			runtime.refreshTools();
 		},
 
@@ -583,6 +589,10 @@ function createExtensionAPI(
 
 		async emitBeforeModelSelect(event: Omit<import("./types.js").BeforeModelSelectEvent, "type">): Promise<import("./types.js").BeforeModelSelectResult | undefined> {
 			return runtime.emitBeforeModelSelect(event);
+		},
+
+		async emitAdjustToolSet(event: Omit<import("./types.js").AdjustToolSetEvent, "type">): Promise<import("./types.js").AdjustToolSetResult | undefined> {
+			return runtime.emitAdjustToolSet(event);
 		},
 
 		events: eventBus,

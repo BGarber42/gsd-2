@@ -11,6 +11,8 @@ import type { KeyAction, KeybindingsConfig } from "../keybindings.js";
 import type { ModelRegistry } from "../model-registry.js";
 import type { SessionManager } from "../session-manager.js";
 import type {
+	AdjustToolSetEvent,
+	AdjustToolSetResult,
 	BeforeAgentStartEvent,
 	BeforeAgentStartEventResult,
 	BeforeModelSelectEvent,
@@ -234,6 +236,7 @@ export class ExtensionRunner {
 		this.modelRegistry = modelRegistry;
 		// Bind emit methods into the shared runtime so createExtensionAPI can delegate to them.
 		this.runtime.emitBeforeModelSelect = (event) => this.emitBeforeModelSelect(event);
+		this.runtime.emitAdjustToolSet = (event) => this.emitAdjustToolSet(event);
 	}
 
 	bindCore(actions: ExtensionActions, contextActions: ExtensionContextActions): void {
@@ -706,6 +709,21 @@ export class ExtensionRunner {
 		} satisfies BeforeModelSelectEvent), (handlerResult) => {
 			if (handlerResult) {
 				result = handlerResult as BeforeModelSelectResult;
+				return { done: true }; // first override wins
+			}
+			return { done: false };
+		});
+		return result;
+	}
+
+	async emitAdjustToolSet(event: Omit<AdjustToolSetEvent, "type">): Promise<AdjustToolSetResult | undefined> {
+		let result: AdjustToolSetResult | undefined;
+		await this.invokeHandlers("adjust_tool_set", () => ({
+			type: "adjust_tool_set" as const,
+			...event,
+		} satisfies AdjustToolSetEvent), (handlerResult) => {
+			if (handlerResult) {
+				result = handlerResult as AdjustToolSetResult;
 				return { done: true }; // first override wins
 			}
 			return { done: false };
