@@ -27,36 +27,43 @@ One command. Walk away. Come back to a built project with clean git history.
 
 ---
 
-## What's New in v2.68
+## What's New in v2.71
 
-### MCP Workflow Tools
+### MCP Secure Env Collect
 
-- **Full workflow over MCP** — slice replanning, milestone management, slice completion, task completion, and core planning tools are now exposed over MCP for external integrations.
-- **Transport-gated MCP** — workflow tool availability adapts to provider transport capabilities automatically.
-- **Write gate enforcement** — workflow MCP respects write gates, preventing unauthorized state mutations from external clients.
+- **Secure credential collection over MCP** — the new `secure_env_collect` tool uses MCP form elicitation to collect secrets (API keys, tokens) from external clients without exposing values in tool output. Masks input in interactive mode.
+- **Hardened elicitation schema** — MCP elicitation schema handling is stricter, with proper validation and fallback for providers that don't support forms.
 
-### Reliability & Recovery
+### MCP Reliability
 
-- **False degraded-mode fix** — eliminates spurious degraded-mode warnings when the DB hasn't been initialized yet.
-- **Stale session resume suppression** — prevents stale interrupted-session resume prompts from hijacking fresh sessions.
-- **Merge conflict recovery** — `autoCommitDirtyState` guarded with cwd restore on `MergeConflictError`.
-- **Auto-resume hardening** — `autoStartTime` restored on resume, managed resources resynced on auto resume.
+- **Stream ordering preserved** — MCP tool output now renders in the correct order, fixing interleaved output in Claude Code and other MCP clients.
+- **isError flag propagation** — workflow tool execution failures now correctly return `isError: true`, so MCP clients can distinguish success from failure.
+- **Multi-round discuss questions** — new-project discuss phase supports multi-round questioning with structured question gates.
 
-### TUI & Developer Experience
+### TUI Fixes
 
-- **Contextual tips system** — TUI and web terminal now surface contextual tips based on workflow state.
-- **Claude Code MCP streaming** — real-time streaming and tool output rendering for Claude Code MCP connections.
+- **Pinned output restored** — pinned output bar displays above the editor during tool execution again.
+- **Turn completion cleanup** — pinned latest output is cleared on turn completion, preventing stale output from persisting.
+- **Secure input masking** — extension input values are masked in interactive mode when collecting secrets.
 
-### Infrastructure
+### Reliability & Internals
 
-- **Weekly model registry refresh** — CI workflow auto-regenerates the model registry on a weekly schedule.
-- **Codebase cache auto-refresh** — stale codebase cache is refreshed automatically without manual intervention.
+- **TOCTOU file locking** — race conditions in event log and custom workflow graph file locking are fixed with proper atomic lock acquisition.
+- **State derive refactor** — `deriveStateFromDb` god function extracted into composable, testable helpers.
+- **Windows portability** — hardened cross-platform portability across runtime, tooling, and CI.
+- **Model routing transparency** — dynamic routing is skipped for interactive dispatches; model changes are always shown in the banner.
+- **Capability-aware routing (ADR-004)** — full implementation of capability scoring, `before_model_select` hook, and task metadata extraction.
+- **Multi-model provider strategy (ADR-005)** — infrastructure for multi-provider model selection wired into live paths.
 
 See the full [Changelog](./CHANGELOG.md) for details on every release.
 
 <details>
-<summary>Previous highlights (v2.67 and earlier)</summary>
+<summary>Previous highlights (v2.70 and earlier)</summary>
 
+- **Full workflow over MCP (v2.68)** — slice replanning, milestone management, slice completion, task completion, and core planning tools exposed over MCP
+- **Transport-gated MCP (v2.68)** — workflow tool availability adapts to provider transport capabilities automatically
+- **Contextual tips system (v2.68)** — TUI and web terminal surface contextual tips based on workflow state
+- **Ask user questions over MCP (v2.70)** — interactive questions exposed via elicitation for external integrations
 - **Tiered Context Injection (M005)** — relevance-scoped context with 65%+ token reduction
 - **Resilient transient error recovery** — defers to Core RetryHandler and fixes cmdCtx race conditions
 - **Anthropic subscription routing** — auto-routed through Claude Code CLI provider with proper display names
