@@ -121,6 +121,8 @@ export function registerHooks(pi: ExtensionAPI): void {
       return { cancel: true };
     }
     const basePath = process.cwd();
+    const { ensureDbOpen } = await import("./dynamic-tools.js");
+    await ensureDbOpen();
     const state = await deriveState(basePath);
     if (!state.activeMilestone || !state.activeSlice || !state.activeTask) return;
     if (state.phase !== "executing") return;
