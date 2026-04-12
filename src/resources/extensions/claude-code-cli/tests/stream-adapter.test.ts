@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import {
 	makeStreamExhaustedErrorMessage,
+	getResultErrorMessage,
 	buildPromptFromContext,
 	buildSdkOptions,
 	createClaudeCodeElicitationHandler,
@@ -37,6 +38,57 @@ describe("stream-adapter — exhausted stream fallback (#2575)", () => {
 		assert.equal(message.stopReason, "error");
 		assert.equal(message.errorMessage, "stream_exhausted_without_result");
 		assert.match(String((message.content[0] as any)?.text ?? ""), /Claude Code error: stream_exhausted_without_result/);
+	});
+});
+
+describe("stream-adapter — result error text (#3776)", () => {
+	test("prefers SDK result text when an error arrives with subtype success", () => {
+		const message = getResultErrorMessage({
+			type: "result",
+			subtype: "success",
+			uuid: "uuid-1",
+			session_id: "session-1",
+			duration_ms: 1,
+			duration_api_ms: 1,
+			is_error: true,
+			num_turns: 1,
+			result: 'API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}',
+			stop_reason: null,
+			total_cost_usd: 0,
+			usage: {
+				input_tokens: 0,
+				output_tokens: 0,
+				cache_read_input_tokens: 0,
+				cache_creation_input_tokens: 0,
+			},
+		});
+
+		assert.match(message, /API Error: 529/);
+		assert.doesNotMatch(message, /^success$/i);
+	});
+
+	test("falls back to a stable classifier when success errors have no text", () => {
+		const message = getResultErrorMessage({
+			type: "result",
+			subtype: "success",
+			uuid: "uuid-2",
+			session_id: "session-2",
+			duration_ms: 1,
+			duration_api_ms: 1,
+			is_error: true,
+			num_turns: 1,
+			result: "   ",
+			stop_reason: null,
+			total_cost_usd: 0,
+			usage: {
+				input_tokens: 0,
+				output_tokens: 0,
+				cache_read_input_tokens: 0,
+				cache_creation_input_tokens: 0,
+			},
+		});
+
+		assert.equal(message, "claude_code_request_failed");
 	});
 });
 
@@ -598,9 +650,9 @@ describe("stream-adapter — MCP elicitation bridge", () => {
 			requestedSchema: {
 				type: "object" as const,
 				properties: {
-					TEST_PASSWORD: {
+					TEST_SECURE_FIELD: {
 						type: "string",
-						title: "TEST_PASSWORD",
+						title: "TEST_SECURE_FIELD",
 						description: "Format: Your secure testing password\nLeave empty to skip.",
 					},
 				},
@@ -611,7 +663,7 @@ describe("stream-adapter — MCP elicitation bridge", () => {
 		const handler = createClaudeCodeElicitationHandler({
 			input: async (_title: string, _placeholder?: string, opts?: { secure?: boolean }) => {
 				inputCalls.push({ opts });
-				return "super-secret";
+				return "example-secure-input";
 			},
 		} as any);
 		assert.ok(handler);
@@ -620,7 +672,7 @@ describe("stream-adapter — MCP elicitation bridge", () => {
 		assert.deepEqual(result, {
 			action: "accept",
 			content: {
-				TEST_PASSWORD: "super-secret",
+				TEST_SECURE_FIELD: "example-secure-input",
 			},
 		});
 		assert.equal(inputCalls.length, 1);
