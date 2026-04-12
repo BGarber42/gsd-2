@@ -20,7 +20,7 @@ import {
 } from "./paths.js";
 import { invalidateAllCaches } from "./cache.js";
 import { loadQueueOrder, saveQueueOrder } from "./queue-order.js";
-import { isDbAvailable, updateMilestoneStatus } from "./gsd-db.js";
+import { getMilestone, isDbAvailable, updateMilestoneStatus } from "./gsd-db.js";
 import { logWarning } from "./workflow-logger.js";
 
 // ─── Park ──────────────────────────────────────────────────────────────────
@@ -77,9 +77,16 @@ export function unparkMilestone(basePath: string, milestoneId: string): boolean 
   if (!mDir || !existsSync(mDir)) return false;
 
   const parkedPath = join(mDir, buildMilestoneFileName(milestoneId, "PARKED"));
-  if (!existsSync(parkedPath)) return false; // not parked
+  const hadParkedFile = existsSync(parkedPath);
+  const dbThinksParked = isDbAvailable() && getMilestone(milestoneId)?.status === "parked";
 
-  unlinkSync(parkedPath);
+  // Recover the reverse desync too: DB can still say "parked" even when the
+  // PARKED marker was lost on disk, and /gsd unpark should repair that state.
+  if (!hadParkedFile && !dbThinksParked) return false;
+
+  if (hadParkedFile) {
+    unlinkSync(parkedPath);
+  }
   // Sync DB status so deriveStateFromDb picks up the unparked milestone (#2694)
   if (isDbAvailable()) {
     try {
