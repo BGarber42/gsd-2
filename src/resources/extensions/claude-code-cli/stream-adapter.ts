@@ -118,6 +118,18 @@ function createAssistantStream(): AssistantMessageEventStream {
 	) as AssistantMessageEventStream;
 }
 
+export function getResultErrorMessage(result: SDKResultMessage): string {
+	if ("errors" in result && Array.isArray(result.errors) && result.errors.length > 0) {
+		return result.errors.join("; ");
+	}
+
+	if ("result" in result && typeof result.result === "string" && result.result.trim().length > 0) {
+		return result.result.trim();
+	}
+
+	return result.subtype === "success" ? "claude_code_request_failed" : result.subtype;
+}
+
 // ---------------------------------------------------------------------------
 // Claude binary resolution
 // ---------------------------------------------------------------------------
@@ -882,11 +894,7 @@ async function pumpSdkMessages(
 					};
 
 					if (result.is_error) {
-						const errText =
-							"errors" in result
-								? (result as any).errors?.join("; ")
-								: result.subtype;
-						finalMessage.errorMessage = errText;
+						finalMessage.errorMessage = getResultErrorMessage(result);
 						stream.push({ type: "error", reason: "error", error: finalMessage });
 					} else {
 						stream.push({ type: "done", reason: "stop", message: finalMessage });
