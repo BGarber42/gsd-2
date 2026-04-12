@@ -14,6 +14,7 @@ import { classifyUnitComplexity, tierLabel } from "./complexity-classifier.js";
 import { resolveModelForComplexity, escalateTier, getEligibleModels, loadCapabilityOverrides, adjustToolSet, filterToolsForProvider } from "./model-router.js";
 import { getLedger, getProjectTotals } from "./metrics.js";
 import { unitPhaseLabel } from "./auto-dashboard.js";
+import { getSessionModelOverride } from "./session-model-override.js";
 
 export interface ModelSelectionResult {
   /** Routing metadata for metrics recording */
@@ -72,8 +73,15 @@ export async function selectAndApplyModel(
   /** When false (interactive/guided-flow), skip dynamic routing and use the session model.
    *  Dynamic routing only applies in auto-mode where cost optimization is expected. (#3962) */
   isAutoMode = true,
+  /** Explicit /gsd model pin captured at bootstrap for long-running auto loops. */
+  sessionModelOverride?: { provider: string; id: string } | null,
 ): Promise<ModelSelectionResult> {
-  const modelConfig = resolvePreferredModelConfig(unitType, autoModeStartModel, isAutoMode);
+  const effectiveSessionModelOverride = sessionModelOverride === undefined
+    ? getSessionModelOverride(ctx.sessionManager.getSessionId())
+    : (sessionModelOverride ?? undefined);
+  const modelConfig = effectiveSessionModelOverride
+    ? undefined
+    : resolvePreferredModelConfig(unitType, autoModeStartModel, isAutoMode);
   let routing: { tier: string; modelDowngraded: boolean } | null = null;
   let appliedModel: Model<Api> | null = null;
 

@@ -85,6 +85,7 @@ import { sep as pathSep } from "node:path";
 import { resolveProjectRootDbPath } from "./bootstrap/dynamic-tools.js";
 import { resolveDefaultSessionModel, resolveDynamicRoutingConfig } from "./preferences-models.js";
 import type { WorktreeResolver } from "./worktree-resolver.js";
+import { getSessionModelOverride } from "./session-model-override.js";
 
 export interface BootstrapDeps {
   shouldUseWorktreeIsolation: () => boolean;
@@ -266,12 +267,17 @@ export async function bootstrapAutoSession(
   // Capture the user's session model before guided-flow dispatch can apply a
   // phase-specific planning model for a discuss turn (#2829).
   //
-  // GSD PREFERENCES.md takes priority over the session model from settings.json
-  // (#3517).  The session model (ctx.model) comes from findInitialModel() which
-  // reads defaultProvider/defaultModel from ~/.gsd/agent/settings.json.  When
-  // the user has explicit model preferences in PREFERENCES.md, those should win.
+  // Precedence:
+  // 1) Explicit session override via /gsd model (this session)
+  // 2) GSD model preferences from PREFERENCES.md
+  // 3) Current session model from settings/session restore
+  //
+  // This preserves #3517 defaults while honoring explicit runtime model
+  // selection for subsequent /gsd runs in the same session.
+  const manualSessionOverride = getSessionModelOverride(ctx.sessionManager.getSessionId());
   const preferredModel = resolveDefaultSessionModel(ctx.model?.provider);
-  const startModelSnapshot = preferredModel
+  const startModelSnapshot = manualSessionOverride
+    ?? preferredModel
     ?? (ctx.model
       ? { provider: ctx.model.provider, id: ctx.model.id }
       : null);
@@ -731,6 +737,7 @@ export async function bootstrapAutoSession(
         id: startModelSnapshot.id,
       };
     }
+    s.manualSessionModelOverride = manualSessionOverride ?? null;
 
     // Apply worker model override from parallel orchestrator (#worker-model).
     // GSD_WORKER_MODEL is injected by the coordinator when parallel.worker_model

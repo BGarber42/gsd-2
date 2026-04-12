@@ -1183,6 +1183,8 @@ export async function runUnitPhase(
     s.verbose,
     s.autoModeStartModel,
     sidecarItem ? undefined : { isRetry, previousTier },
+    undefined,
+    s.manualSessionModelOverride,
   );
   s.currentUnitRouting =
     modelResult.routing as AutoSession["currentUnitRouting"];
