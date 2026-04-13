@@ -6,6 +6,48 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.73.0] - 2026-04-13
+
+### Added
+- **pi-ai**: add Alibaba DashScope as standalone provider (#3891)
+- **gsd**: add layered depth enforcement to discuss.md (#4079)
+
+### Fixed
+- **gsd**: reconcile stale slice rows and rebuild STATE.md before DB close (#3658)
+- **gsd**: block direct writes to gsd.db via hooks to prevent corruption (#3674)
+- **gsd**: break 3 circular dependencies in extension modules (#3730)
+- **claude-code**: default GSD subagents to bypassPermissions and pre-authorize safe built-ins (#4099 follow-up)
+- **gsd**: add memory pressure watchdog and persist stuck detection state (#3708)
+- **state**: prevent false degraded-mode warning when DB not yet initialized (#3922)
+- **async-jobs**: suppress stale follow-up for jobs consumed by await_job (#3787) (#3788)
+- **gsd**: rebuild STATE.md after unit completion (#3876)
+- **gsd**: let doctor heal dispatch fixable warnings (#3875)
+- **gsd**: preserve experimental preferences in merges (#3847)
+- **gsd**: heal legacy task arrays and evidence rows (#4027)
+- **gsd**: unlock depth verification outside guided flow (#4058)
+- **gsd**: preserve paused auto badge after provider pause (#4062)
+- **ollama**: add cloud auth support and resolve real context window via /api/show (#4017)
+- **security**: activate auth middleware and harden shutdown/update routes (#4023)
+- **gsd**: normalize workingDirectory prompt paths (#4057)
+- **claude-code**: pre-authorize workflow MCP tools so interactive acceptEdits mode stops blocking GSD commands
+- **cli**: resolve duplicate validateConfiguredModel and missing getPiDefaultModelAndProvider import
+- update GSD runtime ignore patterns for team mode (#2824)
+- **gsd**: prevent double frontmatter in task SUMMARY.md from projection re-render (#2818)
+- flush extension provider registrations before model resolution (#1923)
+- **gsd**: reset db-open attempted flag on close (#4024)
+- **gsd**: unblock mixed-dependency zero-dep slices (#4025)
+- **pi-tui**: filter kitty keypad private-use input (#4026)
+- **gsd**: disable db mmap on darwin (#4029)
+- **gsd**: reject empty roadmap stubs as milestone plans (#4063)
+- persist defaultProvider when user selects Claude Code CLI in onboarding (#4104)
+- **pi-ai**: filter unavailable github copilot models (#4031)
+- **claude-code**: wrap prompt history in XML tags to stop transcript fabrication
+- clean up MCP tool rendering in Claude Code CLI stream
+
+### Changed
+- **pi-ai**: regenerate model registry from upstream APIs (#3887)
+- require linked issue in PR template (#4112)
+
 ## [2.72.0] - 2026-04-13
 
 ### Added
@@ -2804,7 +2846,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - License updated to MIT
 
-[Unreleased]: https://github.com/gsd-build/gsd-2/compare/v2.72.0...HEAD
+[Unreleased]: https://github.com/gsd-build/gsd-2/compare/v2.73.0...HEAD
+[2.73.0]: https://github.com/gsd-build/gsd-2/compare/v2.72.0...v2.73.0
 [2.72.0]: https://github.com/gsd-build/gsd-2/compare/v2.71.0...v2.72.0
 [2.71.0]: https://github.com/gsd-build/gsd-2/compare/v2.70.1...v2.71.0
 [2.70.1]: https://github.com/gsd-build/gsd-2/compare/v2.70.0...v2.70.1
