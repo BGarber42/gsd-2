@@ -195,6 +195,7 @@ import { clearCmuxSidebar, logCmuxEvent, syncCmuxSidebar } from "../cmux/index.j
 import { startUnitSupervision } from "./auto-timers.js";
 import { runPostUnitVerification } from "./auto-verification.js";
 import {
+  autoCommitUnit,
   postUnitPreVerification,
   postUnitPostVerification,
 } from "./auto-post-unit.js";
@@ -1180,6 +1181,7 @@ function buildLoopDeps(): LoopDeps {
     getMainBranch,
     // Unit closeout + runtime records
     closeoutUnit,
+    autoCommitUnit,
     recordOutcome,
     writeLock,
     captureAvailableSkills,
