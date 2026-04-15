@@ -82,3 +82,6 @@ bun.lock
 
 # ── GSD baseline (auto-generated) ──
 .gsd-id
+
+.mcp.json
+.gitignore
