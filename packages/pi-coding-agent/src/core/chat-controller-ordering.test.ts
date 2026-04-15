@@ -234,6 +234,92 @@ test("chat-controller renders serverToolUse before trailing text matching conten
 	assert.equal(host.chatContainer.children[1]?.constructor?.name, "AssistantMessageComponent");
 });
 
+test("chat-controller drops provisional pre-tool text for claude-code MCP turns", async () => {
+	(globalThis as any)[Symbol.for("@gsd/pi-coding-agent:theme")] = {
+		fg: (_key: string, text: string) => text,
+		bg: (_key: string, text: string) => text,
+		bold: (text: string) => text,
+		italic: (text: string) => text,
+		truncate: (text: string) => text,
+	};
+
+	const host = createHost();
+	host.getMarkdownThemeWithSettings = () => ({});
+
+	const mcpTool = {
+		type: "toolCall",
+		id: "mcp-tool-1",
+		name: "read",
+		mcpServer: "filesystem",
+		arguments: { filePath: "/tmp/demo.txt" },
+	};
+
+	await handleAgentEvent(host, { type: "message_start", message: makeAssistant([]) } as any);
+
+	// Provisional assistant text arrives first.
+	await handleAgentEvent(
+		host,
+		{
+			type: "message_update",
+			message: makeAssistant([{ type: "text", text: "Let me inspect the workspace first." }]),
+			assistantMessageEvent: {
+				type: "text_delta",
+				contentIndex: 0,
+				delta: "Let me inspect the workspace first.",
+				partial: makeAssistant([{ type: "text", text: "Let me inspect the workspace first." }]),
+			},
+		} as any,
+	);
+	assert.equal(host.chatContainer.children.length, 1);
+	assert.equal(host.chatContainer.children[0]?.constructor?.name, "AssistantMessageComponent");
+
+	// MCP tool appears; provisional text should be removed from the chat stack.
+	await handleAgentEvent(
+		host,
+		{
+			type: "message_update",
+			message: makeAssistant([{ type: "text", text: "Let me inspect the workspace first." }, mcpTool]),
+			assistantMessageEvent: {
+				type: "toolcall_end",
+				contentIndex: 1,
+				toolCall: {
+					...mcpTool,
+					externalResult: {
+						content: [{ type: "text", text: "file preview" }],
+						details: {},
+						isError: false,
+					},
+				},
+				partial: makeAssistant([{ type: "text", text: "Let me inspect the workspace first." }, mcpTool]),
+			},
+		} as any,
+	);
+	assert.equal(host.chatContainer.children.length, 1, "provisional pre-tool text should be pruned");
+	assert.equal(host.chatContainer.children[0]?.constructor?.name, "ToolExecutionComponent");
+
+	// Final assistant output should render below the tool.
+	const finalContent = [mcpTool, { type: "text", text: "Which missing feature matters most to you?" }];
+	await handleAgentEvent(
+		host,
+		{
+			type: "message_update",
+			message: makeAssistant(finalContent),
+			assistantMessageEvent: {
+				type: "text_delta",
+				contentIndex: 1,
+				delta: "Which missing feature matters most to you?",
+				partial: makeAssistant(finalContent),
+			},
+		} as any,
+	);
+	assert.equal(host.chatContainer.children.length, 2);
+	assert.equal(host.chatContainer.children[0]?.constructor?.name, "ToolExecutionComponent");
+	assert.equal(host.chatContainer.children[1]?.constructor?.name, "AssistantMessageComponent");
+
+	// Finalize to tear down any pinned spinner state.
+	await handleAgentEvent(host, { type: "message_end", message: makeAssistant(finalContent) } as any);
+});
+
 test("chat-controller pins latest assistant text above editor when tool calls are present", async () => {
 	(globalThis as any)[Symbol.for("@gsd/pi-coding-agent:theme")] = {
 		fg: (_key: string, text: string) => text,

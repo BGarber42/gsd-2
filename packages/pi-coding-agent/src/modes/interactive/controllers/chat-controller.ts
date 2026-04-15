@@ -302,6 +302,18 @@ export async function handleAgentEvent(host: InteractiveModeStateHost & {
 				// Build desired segment plan from content[].
 				{
 					const blocks = host.streamingMessage.content;
+					const isClaudeCodeProvider = host.streamingMessage.provider === "claude-code";
+					const hasMcpToolBlock = blocks.some((b: any) => {
+						if (b?.type === "toolCall") {
+							return typeof b?.mcpServer === "string" || String(b?.name ?? "").startsWith("mcp__");
+						}
+						if (b?.type === "serverToolUse") {
+							return typeof b?.mcpServer === "string" || String(b?.name ?? "").startsWith("mcp__");
+						}
+						return false;
+					});
+					const shouldDropPreToolText = isClaudeCodeProvider && hasMcpToolBlock;
+					const firstToolIdx = blocks.findIndex((b: any) => b.type === "toolCall" || b.type === "serverToolUse");
 					type DesiredSegment =
 						| { kind: "text-run"; startIndex: number; endIndex: number }
 						| { kind: "tool"; contentIndex: number; toolId: string };
@@ -312,6 +324,9 @@ export async function handleAgentEvent(host: InteractiveModeStateHost & {
 						const isText = b.type === "text" || b.type === "thinking";
 						const isTool = b.type === "toolCall" || b.type === "serverToolUse";
 						if (isText) {
+							if (shouldDropPreToolText && firstToolIdx >= 0 && i < firstToolIdx) {
+								continue;
+							}
 							if (runStart === -1) runStart = i;
 						} else {
 							if (runStart !== -1) {
@@ -325,6 +340,37 @@ export async function handleAgentEvent(host: InteractiveModeStateHost & {
 					}
 					if (runStart !== -1) {
 						desired.push({ kind: "text-run", startIndex: runStart, endIndex: blocks.length - 1 });
+					}
+
+					// Claude Code MCP can emit provisional pre-tool prose that gets
+					// superseded by post-tool output. Prune stale text-run segments so
+					// the final assistant output remains below tool output.
+					if (shouldDropPreToolText && firstToolIdx >= 0) {
+						const desiredTextStarts = new Set(
+							desired
+								.filter((seg): seg is Extract<DesiredSegment, { kind: "text-run" }> => seg.kind === "text-run")
+								.map((seg) => seg.startIndex),
+						);
+						const desiredToolIndices = new Set(
+							desired
+								.filter((seg): seg is Extract<DesiredSegment, { kind: "tool" }> => seg.kind === "tool")
+								.map((seg) => seg.contentIndex),
+						);
+						const nextRendered: RenderedSegment[] = [];
+						for (const seg of renderedSegments) {
+							if (seg.kind === "text-run" && !desiredTextStarts.has(seg.startIndex)) {
+								host.chatContainer.removeChild(seg.component);
+								if (host.streamingComponent === seg.component) {
+									host.streamingComponent = undefined;
+								}
+								continue;
+							}
+							if (seg.kind === "tool" && !desiredToolIndices.has(seg.contentIndex)) {
+								continue;
+							}
+							nextRendered.push(seg);
+						}
+						renderedSegments = nextRendered;
 					}
 
 					// Append any newly needed segments (never reorder existing ones).
