@@ -14,6 +14,7 @@ import type { GSDPreferences } from "./preferences.js";
 import type { UatType } from "./files.js";
 import { loadFile, extractUatType, loadActiveOverrides } from "./files.js";
 import { isDbAvailable, getMilestoneSlices, getPendingGates, markAllGatesOmitted, getMilestone } from "./gsd-db.js";
+import { isClosedStatus } from "./status-guards.js";
 import { extractVerdict, isAcceptableUatVerdict } from "./verdict-parser.js";
 
 import {
@@ -754,6 +755,17 @@ export const DISPATCH_RULES: DispatchRule[] = [
     name: "completing-milestone → complete-milestone",
     match: async ({ state, mid, midTitle, basePath }) => {
       if (state.phase !== "completing-milestone") return null;
+
+      // Defense-in-depth (#4324): skip dispatch if the DB already marks
+      // this milestone as complete. Prevents re-enqueue when the legacy
+      // filesystem state-derivation path runs (e.g. transient DB
+      // unavailability) and produces a stale completing-milestone phase.
+      if (isDbAvailable()) {
+        const milestone = getMilestone(mid);
+        if (milestone && isClosedStatus(milestone.status)) {
+          return { action: "skip" };
+        }
+      }
 
       // Safety guard (#2675): block completion when VALIDATION verdict is
       // needs-remediation. The state machine treats needs-remediation as
