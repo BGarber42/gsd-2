@@ -431,6 +431,14 @@ describe("stream-adapter — session persistence (#2859)", () => {
 		);
 	});
 
+	test("buildSdkOptions enables context-1m beta for opus-4-7 (#4348)", () => {
+		const opts = buildSdkOptions("claude-opus-4-7", "test");
+		assert.ok(
+			Array.isArray(opts.betas) && opts.betas.includes("context-1m-2025-08-07"),
+			"claude-opus-4-7 should have context-1m beta enabled for 1M token context window",
+		);
+	});
+
 	test("buildSdkOptions maps reasoning to effort for adaptive Claude Code models (#3917)", () => {
 		const options = buildSdkOptions("claude-sonnet-4-6", "test", undefined, { reasoning: "high" });
 		assert.equal(options.effort, "high");
@@ -438,6 +446,16 @@ describe("stream-adapter — session persistence (#2859)", () => {
 
 	test("buildSdkOptions upgrades xhigh reasoning to max for opus 4.6 (#3917)", () => {
 		const options = buildSdkOptions("claude-opus-4-6", "test", undefined, { reasoning: "xhigh" });
+		assert.equal(options.effort, "max");
+	});
+
+	test("buildSdkOptions maps reasoning to effort for opus-4-7 (#4348)", () => {
+		const options = buildSdkOptions("claude-opus-4-7", "test", undefined, { reasoning: "high" });
+		assert.equal(options.effort, "high");
+	});
+
+	test("buildSdkOptions upgrades xhigh reasoning to max for opus-4-7 (#4348)", () => {
+		const options = buildSdkOptions("claude-opus-4-7", "test", undefined, { reasoning: "xhigh" });
 		assert.equal(options.effort, "max");
 	});
 
