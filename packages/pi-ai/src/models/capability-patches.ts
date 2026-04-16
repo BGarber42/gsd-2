@@ -8,9 +8,12 @@ export const CAPABILITY_PATCHES: CapabilityPatch[] = [
 		match: (m) => m.id.includes("gpt-5.2") || m.id.includes("gpt-5.3") || m.id.includes("gpt-5.4"),
 		caps: { supportsXhigh: true, supportsServiceTier: true },
 	},
-	// Anthropic Opus 4.6 supports xhigh thinking
+	// Anthropic Opus 4.6+ supports xhigh thinking
 	{
-		match: (m) => m.api === "anthropic-messages" && (m.id.includes("opus-4-6") || m.id.includes("opus-4.6")),
+		match: (m) => m.api === "anthropic-messages" && (
+			m.id.includes("opus-4-6") || m.id.includes("opus-4.6") ||
+			m.id.includes("opus-4-7") || m.id.includes("opus-4.7")
+		),
 		caps: { supportsXhigh: true },
 	},
 ];

@@ -152,6 +152,8 @@ export function supportsAdaptiveThinking(modelId: string): boolean {
 	return (
 		modelId.includes("opus-4-6") ||
 		modelId.includes("opus-4.6") ||
+		modelId.includes("opus-4-7") ||
+		modelId.includes("opus-4.7") ||
 		modelId.includes("sonnet-4-6") ||
 		modelId.includes("sonnet-4.6")
 	);
@@ -168,7 +170,7 @@ export function mapThinkingLevelToEffort(level: string | undefined, modelId: str
 		case "high":
 			return "high";
 		case "xhigh":
-			return modelId.includes("opus-4-6") || modelId.includes("opus-4.6") ? "max" : "high";
+			return modelId.includes("opus-4-6") || modelId.includes("opus-4.6") || modelId.includes("opus-4-7") || modelId.includes("opus-4.7") ? "max" : "high";
 		default:
 			return "high";
 	}
