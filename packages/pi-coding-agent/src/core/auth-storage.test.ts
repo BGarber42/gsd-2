@@ -610,3 +610,45 @@ describe("AuthStorage — hasLegacyOAuthCredential (#4280)", () => {
 		assert.equal(storage.hasLegacyOAuthCredential("github-copilot"), true);
 	});
 });
+
+// ─── removeLegacyOAuthCredential (self-heal for #3952 / #4368) ───────────────
+
+describe("AuthStorage — removeLegacyOAuthCredential (#4368)", () => {
+	it("removes oauth entry and returns true when present", () => {
+		const storage = inMemory({
+			anthropic: {
+				type: "oauth",
+				access: "fake",
+				refresh: "fake",
+				expires: Date.now() + 3_600_000,
+			},
+		});
+		assert.equal(storage.removeLegacyOAuthCredential("anthropic"), true);
+		assert.equal(storage.hasLegacyOAuthCredential("anthropic"), false);
+		assert.equal(storage.has("anthropic"), false);
+	});
+
+	it("returns false when no oauth entry exists", () => {
+		const storage = inMemory({ anthropic: makeKey("sk-ant-fake") });
+		assert.equal(storage.removeLegacyOAuthCredential("anthropic"), false);
+		assert.equal(storage.get("anthropic")?.type, "api_key");
+	});
+
+	it("preserves api_key credentials alongside oauth entry", () => {
+		const storage = inMemory({
+			anthropic: [
+				makeKey("sk-ant-keep"),
+				{
+					type: "oauth",
+					access: "fake",
+					refresh: "fake",
+					expires: Date.now() + 3_600_000,
+				},
+			],
+		});
+		assert.equal(storage.removeLegacyOAuthCredential("anthropic"), true);
+		const remaining = storage.getCredentialsForProvider("anthropic");
+		assert.equal(remaining.length, 1);
+		assert.equal(remaining[0].type, "api_key");
+	});
+});

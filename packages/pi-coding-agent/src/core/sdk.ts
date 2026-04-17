@@ -1,4 +1,16 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
+
+/**
+ * Lightweight PATH scan for the `claude` binary — no subprocess, no network.
+ * Mirrors the check in src/resources/extensions/gsd/doctor-providers.ts so the
+ * legacy Anthropic OAuth self-heal path can only trigger when the user has a
+ * working Claude Code CLI to fall back to.
+ */
+function isClaudeCodeBinaryInPath(): boolean {
+	const pathDirs = (process.env.PATH ?? "").split(":");
+	return pathDirs.some((dir) => dir && existsSync(join(dir, "claude")));
+}
 
 /**
  * Structured error thrown when all credentials for a provider are in a
@@ -441,15 +453,30 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				// Anthropic OAuth was removed in v2.74.0 for TOS compliance (#3952).
 				// Users who upgraded from an older version may still have OAuth
 				// credentials in auth.json that will never resolve to a valid API key.
-				// Surface a targeted migration message instead of the generic cooldown.
 				if (
 					resolvedProvider === "anthropic" &&
 					modelRegistry.authStorage.hasLegacyOAuthCredential(resolvedProvider)
 				) {
+					// Self-heal: strip the stale oauth entry so hasAuth() stops lying
+					// about anthropic being configured. This preserves any api_key
+					// credentials alongside it.
+					const removed = modelRegistry.authStorage.removeLegacyOAuthCredential(resolvedProvider);
+					if (removed) {
+						console.warn(
+							`[auth] Removed unsupported Anthropic OAuth credential from auth.json (#3952).`,
+						);
+					}
+					if (isClaudeCodeBinaryInPath()) {
+						throw new Error(
+							`Removed stale Anthropic OAuth credential (OAuth support removed in v2.74.0). ` +
+								`Your current model's provider is set to "anthropic" but the local Claude Code CLI ` +
+								`is available — switch the model's provider to "claude-code" in your preferences ` +
+								`to use it, or set ANTHROPIC_API_KEY to continue with the Anthropic API directly.`,
+						);
+					}
 					throw new Error(
-						`Your Anthropic credentials were set up via OAuth, which is no longer supported. ` +
-							`Please re-authenticate: run '/login', select 'Paste an API key' → Anthropic. ` +
-							`Alternatively, switch to the Claude Code CLI provider.`,
+						`Removed stale Anthropic OAuth credential (OAuth support removed in v2.74.0). ` +
+							`Set ANTHROPIC_API_KEY, run '/login' and paste an API key, or switch to a different provider.`,
 					);
 				}
 				const expiry = modelRegistry.authStorage.getEarliestBackoffExpiry(resolvedProvider);
