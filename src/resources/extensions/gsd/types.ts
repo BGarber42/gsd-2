@@ -19,6 +19,7 @@ export type Phase =
   | "validating-milestone"
   | "completing-milestone"
   | "replanning-slice"
+  | "escalating-task"
   | "complete"
   | "paused"
   | "blocked";
@@ -350,6 +351,49 @@ export interface PhaseSkipPreferences {
   reassess_after_slice?: boolean;
   /** When true, auto-mode pauses before each slice for discussion (#789). */
   require_slice_discussion?: boolean;
+  /** ADR-011 Phase 2: when true, executors may escalate task-level ambiguity via T##-ESCALATION.json. */
+  mid_execution_escalation?: boolean;
+}
+
+// ─── ADR-011 Phase 2 Escalation ──────────────────────────────────────────
+
+export interface EscalationOption {
+  /** Short identifier, e.g. "A", "B". Used as the `choice` value in `/gsd escalate resolve <taskId> <id>`. */
+  id: string;
+  /** One-line label for the option. */
+  label: string;
+  /** 1-2 sentence description of the tradeoffs of this option. */
+  tradeoffs: string;
+}
+
+export interface EscalationArtifact {
+  /** Schema version for the artifact file — bumps if we change the shape. */
+  version: 1;
+  taskId: string;
+  sliceId: string;
+  milestoneId: string;
+  /** The question the executor needs the user to resolve. */
+  question: string;
+  /** 2-4 options the user can choose between. */
+  options: EscalationOption[];
+  /** Which option the executor recommends (references `options[].id`). */
+  recommendation: string;
+  /** Why the executor recommends that option (1-2 sentences). */
+  recommendationRationale: string;
+  /**
+   * When true, the executor proceeds with the recommendation as the answer
+   * and the loop continues. User's later choice becomes a carry-forward
+   * override for the NEXT task. When false, auto-mode pauses until the
+   * user resolves via `/gsd escalate resolve`.
+   */
+  continueWithDefault: boolean;
+  createdAt: string;
+  /** Populated by `/gsd escalate resolve`. */
+  respondedAt?: string;
+  /** User's choice — either an option id, "accept" (use recommendation), or "reject-blocker". */
+  userChoice?: string;
+  /** Optional free-text rationale from the user. */
+  userRationale?: string;
 }
 
 export interface NotificationPreferences {
@@ -435,6 +479,7 @@ export interface Decision {
   rationale: string; // why this choice
   revisable: string; // whether/when revisable
   made_by: DecisionMadeBy; // who made the decision: human, agent, or collaborative
+  source?: string; // ADR-011 P2: origin — "discussion" (default) | "planning" | "escalation"
   superseded_by: string | null; // ID of superseding decision, or null
 }
 
@@ -542,6 +587,20 @@ export interface CompleteTaskParams {
   knownIssues?: string;
   /** @optional — defaults to false when omitted */
   blockerDiscovered?: boolean;
+  /**
+   * ADR-011 Phase 2 — optional escalation payload. When populated, the executor
+   * is asking the user to resolve an ambiguity. If `continueWithDefault: true`
+   * the task still completes (using the recommendation) but an artifact is
+   * written for later user review. If false, auto-mode pauses.
+   * @optional
+   */
+  escalation?: {
+    question: string;
+    options: EscalationOption[];
+    recommendation: string;
+    recommendationRationale: string;
+    continueWithDefault: boolean;
+  };
   /** @optional — defaults to [] when omitted by models with limited tool-calling */
   verificationEvidence?: Array<{
     command: string;

@@ -631,6 +631,20 @@ export function registerDbTools(pi: ExtensionAPI): void {
       keyFiles: Type.Optional(Type.Array(Type.String(), { description: "List of key files created or modified" })),
       keyDecisions: Type.Optional(Type.Array(Type.String(), { description: "List of key decisions made during this task" })),
       blockerDiscovered: Type.Optional(Type.Boolean({ description: "Whether a plan-invalidating blocker was discovered" })),
+      // ADR-011 Phase 2: mid-execution escalation — agent asks the user to resolve an ambiguity.
+      escalation: Type.Optional(Type.Object({
+        question: Type.String({ description: "The question the user needs to answer — one clear sentence." }),
+        options: Type.Array(Type.Object({
+          id: Type.String({ description: "Short id (e.g. 'A', 'B') used by /gsd escalate resolve." }),
+          label: Type.String({ description: "One-line label." }),
+          tradeoffs: Type.String({ description: "1-2 sentences on the tradeoffs of this option." }),
+        }), { description: "2–4 options the user can choose between." }),
+        recommendation: Type.String({ description: "Option id the executor recommends." }),
+        recommendationRationale: Type.String({ description: "Why the recommendation — 1–2 sentences." }),
+        continueWithDefault: Type.Boolean({
+          description: "When true, loop continues (artifact logged for later review). When false, auto-mode pauses until the user resolves via /gsd escalate resolve.",
+        }),
+      }, { description: "ADR-011 Phase 2: optional escalation payload. Only honored when phases.mid_execution_escalation is true." })),
       verificationEvidence: Type.Optional(Type.Array(
         Type.Union([
           Type.Object({

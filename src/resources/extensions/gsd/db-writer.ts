@@ -373,6 +373,8 @@ export interface SaveDecisionFields {
   revisable?: string;
   when_context?: string;
   made_by?: import('./types.js').DecisionMadeBy;
+  /** ADR-011 Phase 2: origin of the decision — "discussion" (default), "planning", "escalation". */
+  source?: string;
 }
 
 /**
@@ -415,6 +417,7 @@ export async function saveDecisionToDb(
         rationale: fields.rationale,
         revisable: fields.revisable ?? 'Yes',
         made_by: fields.made_by ?? 'agent',
+        source: fields.source ?? 'discussion',
         superseded_by: null,
       });
 

@@ -191,6 +191,11 @@ Examples:
     await handleNotificationsCommand(trimmed.replace(/^notifications\s*/, "").trim(), ctx, pi);
     return true;
   }
+  if (trimmed === "escalate" || trimmed.startsWith("escalate ")) {
+    const { handleEscalateCommand } = await import("./escalate.js");
+    await handleEscalateCommand(trimmed.replace(/^escalate\s*/, "").trim(), ctx, pi);
+    return true;
+  }
   if (trimmed === "inspect") {
     await handleInspect(ctx);
     return true;

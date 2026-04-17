@@ -1417,7 +1417,28 @@ export async function buildExecuteTaskPrompt(
     ? `### Runtime Context\nSource: \`.gsd/RUNTIME.md\`\n\n${runtimeContent.trim()}`
     : "";
 
-  const phaseAnchorSection = planAnchor ? formatAnchorForPrompt(planAnchor) : "";
+  let phaseAnchorSection = planAnchor ? formatAnchorForPrompt(planAnchor) : "";
+
+  // ADR-011 Phase 2: inject any resolved-but-unapplied escalation override
+  // into this task's prompt. Claim is atomic via DB UPDATE WHERE IS NULL, so
+  // if a parallel build already injected it, we skip. Feature-gated by
+  // phases.mid_execution_escalation. Prepended to phaseAnchorSection so it
+  // appears near the top of the prompt above planning anchors.
+  if (prefs?.preferences?.phases?.mid_execution_escalation === true) {
+    try {
+      const { claimOverrideForInjection } = await import("./escalation.js");
+      const claimed = claimOverrideForInjection(base, mid, sid);
+      if (claimed) {
+        const block = claimed.injectionBlock + "\n\n---\n\n";
+        phaseAnchorSection = phaseAnchorSection
+          ? `${block}${phaseAnchorSection}`
+          : block;
+      }
+    } catch (escalationErr) {
+      // Escalation module unavailable or threw — log and proceed.
+      logWarning("auto-prompts", `escalation override injection failed: ${(escalationErr as Error).message}`);
+    }
+  }
 
   // Task-scoped gates owned by execute-task (Q5/Q6/Q7). Pull only the
   // gates that plan-slice actually seeded for this task — tasks with no

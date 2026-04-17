@@ -80,7 +80,7 @@ describe('gsd-db', () => {
     // Check schema_version table
     const adapter = _getAdapter()!;
     const version = adapter.prepare('SELECT MAX(version) as version FROM schema_version').get();
-    assert.deepStrictEqual(version?.['version'], 15, 'schema version should be 15');
+    assert.deepStrictEqual(version?.['version'], 17, 'schema version should be 17');
 
     // Check tables exist by querying them
     const dRows = adapter.prepare('SELECT count(*) as cnt FROM decisions').get();

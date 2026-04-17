@@ -44,6 +44,8 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { debugCount, debugTime } from './debug-logger.js';
 import { logWarning, logError } from './workflow-logger.js';
 import { extractVerdict } from './verdict-parser.js';
+import { loadEffectiveGSDPreferences } from './preferences.js';
+import { detectPendingEscalation } from './escalation.js';
 
 import {
   isDbAvailable,
@@ -958,6 +960,25 @@ export async function deriveStateFromDb(basePath: string): Promise<GSDState> {
         phase: 'replanning-slice', recentDecisions: [],
         blockers: [`Task ${blockerTaskId} discovered a blocker requiring slice replan`],
         nextAction: `Task ${blockerTaskId} reported blocker_discovered. Replan slice ${activeSlice.id} before continuing.`,
+        activeWorkspace: undefined,
+        registry, requirements,
+        progress: { milestones: milestoneProgress, slices: sliceProgress, tasks: taskProgress },
+      };
+    }
+  }
+
+  // ADR-011 Phase 2: pause-on-escalation takes precedence over dispatching the
+  // next task. `awaiting_review` tasks (continueWithDefault=true) are NOT
+  // surfaced here — they let the loop continue.
+  const escalationEnabled = loadEffectiveGSDPreferences()?.preferences?.phases?.mid_execution_escalation === true;
+  if (escalationEnabled) {
+    const escalatingTaskId = detectPendingEscalation(tasks, basePath);
+    if (escalatingTaskId) {
+      return {
+        activeMilestone, activeSlice, activeTask,
+        phase: 'escalating-task', recentDecisions: [],
+        blockers: [`Task ${escalatingTaskId} requires a user decision before the loop can proceed`],
+        nextAction: `Run /gsd escalate show ${escalatingTaskId} to review, then /gsd escalate resolve ${escalatingTaskId} <choice> to proceed.`,
         activeWorkspace: undefined,
         registry, requirements,
         progress: { milestones: milestoneProgress, slices: sliceProgress, tasks: taskProgress },

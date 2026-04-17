@@ -37,6 +37,8 @@ import { renderAllProjections, renderSummaryContent } from "../workflow-projecti
 import { writeManifest } from "../workflow-manifest.js";
 import { appendEvent } from "../workflow-events.js";
 import { logWarning, logError } from "../workflow-logger.js";
+import { loadEffectiveGSDPreferences } from "../preferences.js";
+import { buildEscalationArtifact, writeEscalationArtifact } from "../escalation.js";
 
 export interface CompleteTaskResult {
   taskId: string;
@@ -297,6 +299,42 @@ export async function handleCompleteTask(
       "tool",
       `complete-task gate close warning for ${params.milestoneId}/${params.sliceId}/${params.taskId}: ${(gateErr as Error).message}`,
     );
+  }
+
+  // ── ADR-011 Phase 2: write escalation artifact (opt-in) ────────────────
+  // The executor may include an `escalation` payload when they need the user
+  // to resolve an ambiguity. We write the artifact + flip the DB flag only
+  // when `phases.mid_execution_escalation` is enabled — otherwise the
+  // payload is ignored so agents can safely populate it before users opt in.
+  if (params.escalation) {
+    const escalationEnabled = loadEffectiveGSDPreferences()?.preferences?.phases?.mid_execution_escalation === true;
+    if (escalationEnabled) {
+      try {
+        const artifact = buildEscalationArtifact({
+          taskId: params.taskId,
+          sliceId: params.sliceId,
+          milestoneId: params.milestoneId,
+          question: params.escalation.question,
+          options: params.escalation.options,
+          recommendation: params.escalation.recommendation,
+          recommendationRationale: params.escalation.recommendationRationale,
+          continueWithDefault: params.escalation.continueWithDefault,
+        });
+        writeEscalationArtifact(basePath, artifact);
+      } catch (escalationErr) {
+        // Non-fatal: the task itself completed successfully. Surface the
+        // escalation failure so the user knows why no pause happened.
+        logWarning(
+          "tool",
+          `complete-task escalation write failed for ${params.milestoneId}/${params.sliceId}/${params.taskId}: ${(escalationErr as Error).message}`,
+        );
+      }
+    } else {
+      logWarning(
+        "tool",
+        `complete-task received escalation payload but phases.mid_execution_escalation is not enabled; ignoring (${params.milestoneId}/${params.sliceId}/${params.taskId})`,
+      );
+    }
   }
 
   // Invalidate all caches

@@ -556,6 +556,25 @@ export const DISPATCH_RULES: DispatchRule[] = [
     },
   },
   {
+    // ADR-011 Phase 2: pause auto-mode until the user resolves a pending
+    // escalation via `/gsd escalate resolve <taskId> <choice>`. Only fires
+    // for escalations with `continueWithDefault: false` — the
+    // `continueWithDefault: true` path writes an artifact without flipping
+    // `escalation_pending`, so it never enters this phase.
+    name: "escalating-task → pause-for-escalation",
+    match: async ({ state, mid }) => {
+      if (state.phase !== "escalating-task") return null;
+      if (!state.activeSlice) return missingSliceStop(mid, state.phase);
+      return {
+        action: "stop",
+        reason:
+          state.nextAction ||
+          `${mid}: task escalation awaits user resolution. Run /gsd escalate list to see pending items.`,
+        level: "info",
+      };
+    },
+  },
+  {
     name: "executing → reactive-execute (parallel dispatch)",
     match: async ({ state, mid, midTitle, basePath, prefs }) => {
       if (state.phase !== "executing" || !state.activeTask) return null;

@@ -146,6 +146,11 @@ export function snapshotState(): StateManifest {
     observability_impact: (r["observability_impact"] as string) ?? "",
     full_plan_md: (r["full_plan_md"] as string) ?? "",
     sequence: toNumeric(r["sequence"], 0) as number,
+    blocker_source: (r["blocker_source"] as string) ?? "",
+    escalation_pending: toNumeric(r["escalation_pending"], 0) as number,
+    escalation_awaiting_review: toNumeric(r["escalation_awaiting_review"], 0) as number,
+    escalation_artifact_path: (r["escalation_artifact_path"] as string) ?? null,
+    escalation_override_applied_at: (r["escalation_override_applied_at"] as string) ?? null,
   }));
 
   const rawDecisions = db.prepare("SELECT * FROM decisions ORDER BY seq").all() as Record<string, unknown>[];

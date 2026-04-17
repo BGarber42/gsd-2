@@ -319,8 +319,9 @@ export function validatePreferences(preferences: GSDPreferences): {
       if (p.skip_milestone_validation !== undefined) validatedPhases.skip_milestone_validation = !!p.skip_milestone_validation;
       if (p.reassess_after_slice !== undefined) validatedPhases.reassess_after_slice = !!p.reassess_after_slice;
       if ((p as any).require_slice_discussion !== undefined) (validatedPhases as any).require_slice_discussion = !!(p as any).require_slice_discussion;
+      if (p.mid_execution_escalation !== undefined) validatedPhases.mid_execution_escalation = !!p.mid_execution_escalation;
       // Warn on unknown phase keys
-      const knownPhaseKeys = new Set(["skip_research", "skip_reassess", "skip_slice_research", "skip_milestone_validation", "reassess_after_slice", "require_slice_discussion"]);
+      const knownPhaseKeys = new Set(["skip_research", "skip_reassess", "skip_slice_research", "skip_milestone_validation", "reassess_after_slice", "require_slice_discussion", "mid_execution_escalation"]);
       for (const key of Object.keys(p)) {
         if (!knownPhaseKeys.has(key)) {
           warnings.push(`unknown phases key "${key}" — ignored`);
