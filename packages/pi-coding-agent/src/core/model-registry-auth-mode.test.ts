@@ -410,6 +410,8 @@ describe("ModelRegistry authMode — getAvailable", () => {
 		assert.equal(findModel(registry, "openai-codex", "gpt-5.2-codex"), undefined);
 		assert.ok(registry.find("openai-codex", "gpt-5.4"));
 		assert.ok(findModel(registry, "openai-codex", "gpt-5.4"));
+		assert.ok(registry.find("openai-codex", "gpt-5.4-mini"));
+		assert.ok(findModel(registry, "openai-codex", "gpt-5.4-mini"));
 	});
 
 	it("keeps API-backed OpenAI Codex-capable models available", () => {

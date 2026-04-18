@@ -370,6 +370,7 @@ describe("spot-checks for models added in this regeneration", () => {
 		{ provider: "groq", id: "groq/compound-mini" },
 		{ provider: "huggingface", id: "zai-org/GLM-5.1" },
 		{ provider: "openai", id: "gpt-5.3-chat-latest" },
+		{ provider: "openai-codex", id: "gpt-5.4-mini", reasoning: true },
 		{ provider: "mistral", id: "mistral-small-2603" },
 		{ provider: "zai", id: "glm-5.1" },
 	];

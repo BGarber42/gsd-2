@@ -140,4 +140,21 @@ export const OPENAI_CODEX_MODELS = {
 			contextWindow: 272000,
 			maxTokens: 128000,
 		} satisfies Model<"openai-codex-responses">,
+		"gpt-5.4-mini": {
+			id: "gpt-5.4-mini",
+			name: "GPT-5.4 Mini",
+			api: "openai-codex-responses",
+			provider: "openai-codex",
+			baseUrl: "https://chatgpt.com/backend-api",
+			reasoning: true,
+			input: ["text", "image"],
+			cost: {
+				input: 0.75,
+				output: 4.5,
+				cacheRead: 0.075,
+				cacheWrite: 0,
+			},
+			contextWindow: 272000,
+			maxTokens: 128000,
+		} satisfies Model<"openai-codex-responses">,
 	} as const satisfies Record<string, Model<any>>;

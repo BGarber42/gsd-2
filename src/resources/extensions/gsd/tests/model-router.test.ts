@@ -298,7 +298,7 @@ test("MODEL_CAPABILITY_PROFILES has entries for all tier-mapped models", () => {
 
 test("#2885: openai-codex light-tier models are recognized", () => {
   const config = { ...defaultRoutingConfig(), enabled: true };
-  const lightModels = ["gpt-4.1-mini", "gpt-4.1-nano", "gpt-5-mini", "gpt-5-nano", "gpt-5.1-codex-mini", "gpt-5.3-codex-spark"];
+  const lightModels = ["gpt-4.1-mini", "gpt-4.1-nano", "gpt-5-mini", "gpt-5-nano", "gpt-5.1-codex-mini", "gpt-5.3-codex-spark", "gpt-5.4-mini"];
   for (const model of lightModels) {
     const result = resolveModelForComplexity(
       makeClassification("light"),
