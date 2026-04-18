@@ -92,7 +92,8 @@ jobs:
         run: |
           VERSION=$(node -e 'process.stdout.write(require("./package.json").version)')
           if npm view "gsd-pi@${VERSION}" version 2>/dev/null; then
-            echo "Version ${VERSION} already published — skipping"
+            echo "Version ${VERSION} already published — moving @next tag"
+            npm dist-tag add "gsd-pi@${VERSION}" next
           else
             npm publish --tag next
           fi
