@@ -9,9 +9,8 @@ permissions:
 
 jobs:
   check-version:
-    # Only run on bug reports (they have the "GSD version" field)
-    if: contains(github.event.issue.body, 'GSD version')
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    if: ${{ github.event_name == 'issues' && contains(github.event.issue.body, 'GSD version') }}
+    runs-on: ubuntu-latest
     steps:
       - name: Check GSD version and comment if outdated
         uses: actions/github-script@v7
@@ -20,47 +19,42 @@ jobs:
             const body = context.payload.issue.body || '';
             const issueNumber = context.payload.issue.number;
 
-            // Parse the version from the issue body.
-            // GitHub issue forms render field labels as "### GSD version\n\n<value>"
             const match = body.match(/###\s+GSD version\s*\n+\s*([^\s\n]+)/i);
             if (!match) {
-              core.info('Could not find a GSD version value in the issue body — skipping.');
+              core.info('Could not find a GSD version value in the issue body - skipping.');
               return;
             }
 
             const reportedVersion = match[1].trim().replace(/^v/, '');
-            core.info(`Reported version: ${reportedVersion}`);
+            core.info('Reported version: ' + reportedVersion);
 
-            // Fetch the latest published version from npm
             const npmResponse = await fetch('https://registry.npmjs.org/gsd-pi/latest');
             if (!npmResponse.ok) {
-              core.setFailed(`npm registry request failed: ${npmResponse.status}`);
+              core.setFailed('npm registry request failed: ' + npmResponse.status);
               return;
             }
             const npmData = await npmResponse.json();
             const latestVersion = npmData.version;
-            core.info(`Latest version: ${latestVersion}`);
+            core.info('Latest version: ' + latestVersion);
 
-            // Semver comparison (major.minor.patch — no pre-release handling needed)
             function parseVersion(v) {
               const parts = v.replace(/^v/, '').split('.').map(Number);
               return [parts[0] || 0, parts[1] || 0, parts[2] || 0];
             }
 
             function isOutdated(reported, latest) {
-              const [rMaj, rMin, rPat] = parseVersion(reported);
-              const [lMaj, lMin, lPat] = parseVersion(latest);
-              if (rMaj !== lMaj) return rMaj < lMaj;
-              if (rMin !== lMin) return rMin < lMin;
-              return rPat < lPat;
+              const r = parseVersion(reported);
+              const l = parseVersion(latest);
+              if (r[0] !== l[0]) return r[0] < l[0];
+              if (r[1] !== l[1]) return r[1] < l[1];
+              return r[2] < l[2];
             }
 
             if (!isOutdated(reportedVersion, latestVersion)) {
-              core.info(`Version ${reportedVersion} is current — no comment needed.`);
+              core.info('Version ' + reportedVersion + ' is current - no comment needed.');
               return;
             }
 
-            // Check if we've already posted this comment to avoid duplicates on edits
             const comments = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -68,36 +62,37 @@ jobs:
             });
 
             const botMarker = '<!-- gsd-version-check -->';
-            const alreadyCommented = comments.data.some(c =>
-              c.user.type === 'Bot' && c.body.includes(botMarker)
-            );
+            const alreadyCommented = comments.data.some(function (c) {
+              return c.user.type === 'Bot' && c.body.indexOf(botMarker) !== -1;
+            });
 
             if (alreadyCommented) {
-              core.info('Version check comment already posted — skipping duplicate.');
+              core.info('Version check comment already posted - skipping duplicate.');
               return;
             }
 
-            const comment = [
+            const lines = [
               botMarker,
               '',
-              '\u{1F44B} Thanks for filing this bug report!',
+              'Thanks for filing this bug report!',
               '',
-              `It looks like you're running **GSD v${reportedVersion}**, but the latest release is **v${latestVersion}**.`,
+              'It looks like you are running **GSD v' + reportedVersion + '**, but the latest release is **v' + latestVersion + '**.',
               '',
               'Before we investigate further, please upgrade and check whether the issue still occurs:',
               '',
               '```bash',
               'npm install -g gsd-pi@latest',
-              `gsd --version   # should print ${latestVersion}`,
+              'gsd --version   # should print ' + latestVersion,
               '```',
               '',
-              `Then re-run your reproduction steps. If the problem persists on **v${latestVersion}**, please update the **GSD version** field in this issue and let us know.`,
+              'Then re-run your reproduction steps. If the problem persists on **v' + latestVersion + '**, please update the **GSD version** field in this issue and let us know.',
               '',
               '> **Why?** Many bugs are fixed in subsequent releases. Confirming on the latest version keeps the team focused on real, current issues.',
               '',
               '---',
-              '*This is an automated check. If you\'re intentionally pinned to an older version, feel free to explain why and we\'ll continue from there.*',
-            ].join('\n');
+              '*This is an automated check. If you are intentionally pinned to an older version, feel free to explain why and we will continue from there.*',
+            ];
+            const comment = lines.join('\n');
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,
@@ -113,4 +108,4 @@ jobs:
               labels: ['needs-upgrade'],
             });
 
-            core.info(`Posted upgrade prompt for v${reportedVersion} → v${latestVersion}`);
+            core.info('Posted upgrade prompt for v' + reportedVersion + ' -> v' + latestVersion);
