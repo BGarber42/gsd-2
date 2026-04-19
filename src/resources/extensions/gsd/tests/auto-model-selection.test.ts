@@ -182,6 +182,7 @@ test("selectAndApplyModel honors explicit phase models without downgrading (#361
     const result = await selectAndApplyModel(
       {
         modelRegistry: { getAvailable: () => availableModels },
+        sessionManager: { getSessionId: () => "test-session" },
         ui: { notify: () => {} },
         model: { provider: "anthropic", id: "claude-opus-4-6", api: "anthropic-messages" },
       } as any,
