@@ -98,6 +98,16 @@ export interface CreateAgentSessionOptions {
 	tools?: Tool[];
 	/** Custom tools to register (in addition to built-in tools). */
 	customTools?: ToolDefinition[];
+	/**
+	 * Additional tool names to activate after extensions/MCP servers register.
+	 * Names that are not registered by any extension are silently ignored
+	 * by AgentSession.setActiveToolsByName.
+	 *
+	 * Used by --tools to forward names that don't match a built-in (likely
+	 * extension- or MCP-provided), so subagents whose frontmatter declares
+	 * extension tools don't end up with an empty tool list.
+	 */
+	extraActiveToolNames?: string[];
 
 	/** Resource loader. When omitted, DefaultResourceLoader is used. */
 	resourceLoader?: ResourceLoader;
@@ -311,9 +321,15 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	const defaultActiveToolNames: ToolName[] = editMode === "hashline"
 		? ["hashline_read", "bash", "hashline_edit", "write", "lsp"]
 		: ["read", "bash", "edit", "write", "lsp"];
-	const initialActiveToolNames: ToolName[] = options.tools
+	const builtinActiveToolNames: ToolName[] = options.tools
 		? options.tools.map((t) => t.name).filter((n): n is ToolName => n in allTools)
 		: defaultActiveToolNames;
+	// Merge in extension/MCP tool names from --tools that didn't match a built-in.
+	// AgentSession.setActiveToolsByName silently drops names that aren't in the
+	// registry, so unknown names are harmless here.
+	const initialActiveToolNames: string[] = options.extraActiveToolNames
+		? [...builtinActiveToolNames, ...options.extraActiveToolNames]
+		: builtinActiveToolNames;
 
 	let agent: Agent;
 
