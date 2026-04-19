@@ -66,6 +66,19 @@ export function registerGsdExtension(pi: ExtensionAPI): void {
   registerWorktreeCommand(pi);
   registerExitCommand(pi);
 
+  // Wire the Layer 2 event emitter bridge so deeply-nested GSD code can emit
+  // extension events (git lifecycle, verify, budget, milestone, unit) without
+  // threading `pi` through every call site.
+  import("../hook-emitter.js")
+    .then(({ setHookEmitter }) => setHookEmitter(pi))
+    .catch((err) => {
+      // Non-fatal — emitters simply become no-ops if this import fails, but
+      // surface the failure so silent bootstrap breakage is debuggable.
+      process.stderr.write(
+        `[gsd] Failed to bootstrap hook-emitter bridge: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`,
+      );
+    });
+
   installEpipeGuard();
 
   // Ecosystem handlers captured by the GSDExtensionAPI wrapper for the

@@ -1131,16 +1131,42 @@ export async function runGuards(
       s.lastBudgetAlertLevel =
         newBudgetAlertLevel as AutoSession["lastBudgetAlertLevel"];
 
-      if (threshold.pct === 100 && budgetEnforcementAction !== "none") {
+      // Emit Layer 2 budget_threshold event (post-plan hook recommendation).
+      // Extensions / Layer 0 shell hooks may return an action override.
+      let hookAction: "pause" | "downgrade" | "continue" | undefined;
+      try {
+        const { emitBudgetThreshold } = await import("../hook-emitter.js");
+        const hookResult = await emitBudgetThreshold({
+          fraction: budgetPct,
+          spent: totalCost,
+          limit: budgetCeiling,
+        });
+        if (hookResult?.action) hookAction = hookResult.action;
+      } catch (hookErr) {
+        logWarning("engine", `budget_threshold hook emission failed: ${(hookErr as Error).message}`);
+      }
+
+      // Apply hook override to enforcement action. "continue" → "none" (no enforcement),
+      // "pause" and "downgrade" map to the matching enforcement path below.
+      let effectiveAction = budgetEnforcementAction;
+      if (hookAction === "continue") {
+        effectiveAction = "none";
+      } else if (hookAction === "pause") {
+        effectiveAction = "pause";
+      } else if (hookAction === "downgrade") {
+        effectiveAction = "warn";
+      }
+
+      if (threshold.pct === 100 && effectiveAction !== "none") {
         // 100% — special enforcement logic (halt/pause/warn)
         const msg = `Budget ceiling ${deps.formatCost(budgetCeiling)} reached (spent ${deps.formatCost(totalCost)}).`;
-        if (budgetEnforcementAction === "halt") {
+        if (effectiveAction === "halt") {
           deps.sendDesktopNotification("GSD", msg, "error", "budget", basename(s.originalBasePath || s.basePath));
           await deps.stopAuto(ctx, pi, "Budget ceiling reached");
           debugLog("autoLoop", { phase: "exit", reason: "budget-halt" });
           return { action: "break", reason: "budget-halt" };
         }
-        if (budgetEnforcementAction === "pause") {
+        if (effectiveAction === "pause") {
           ctx.ui.notify(
             `${msg} Pausing auto-mode — /gsd auto to override and continue.`,
             "warning",

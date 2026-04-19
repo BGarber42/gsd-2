@@ -160,6 +160,8 @@ export function createGSDExtensionAPI(
       pi.emitBeforeModelSelect(...args),
     emitAdjustToolSet: (...args: Parameters<ExtensionAPI["emitAdjustToolSet"]>) =>
       pi.emitAdjustToolSet(...args),
+    emitExtensionEvent: (...args: Parameters<ExtensionAPI["emitExtensionEvent"]>) =>
+      pi.emitExtensionEvent(...args),
 
     // ── Tool / command / shortcut / flag registration ──────────────────
     registerTool: ((tool: any) => pi.registerTool(tool)) as ExtensionAPI["registerTool"],
