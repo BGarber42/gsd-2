@@ -19,6 +19,7 @@ export type ErrorClass =
   | { kind: "stream";       retryAfterMs: number }
   | { kind: "connection";   retryAfterMs: number }
   | { kind: "model-error" }
+  | { kind: "unsupported-model" }
   | { kind: "permanent" }
   | { kind: "unknown" };
 
@@ -59,6 +60,18 @@ const CONNECTION_RE = /terminated|connection.?(?:refused|error)|other side close
 const STREAM_RE = /in JSON at position \d+|Unexpected end of JSON|SyntaxError.*JSON/i;
 const RESET_DELAY_RE = /reset in (\d+)s/i;
 
+// Provider-side model entitlement rejection: the SDK accepted the model switch,
+// but the provider refused at request time because the current account/plan/tier
+// cannot use that model.  Must match all three of: a model/deployment token,
+// a negative-entitlement indicator, and an account/plan/tier/subscription token.
+// Requiring all three keeps generic "account suspended" errors in `permanent`
+// (no model token) while catching the phrasings providers actually use.
+// See issue #4513.
+const UNSUPPORTED_MODEL_MODEL_RE = /\b(?:model|deployment)\b/i;
+const UNSUPPORTED_MODEL_INDICATOR_RE =
+  /\bnot support(?:ed|s)?\b|\bunsupported\b|\bnot available\b|\bunavailable\b|\bno access\b|\bdoes(?:n['’]t| not) (?:have access|support)\b|\bnot authori[sz]ed\b/i;
+const UNSUPPORTED_MODEL_SCOPE_RE = /\b(?:account|plan|tier|subscription)\b/i;
+
 /**
  * Classify an error message into one of the ErrorClass kinds.
  *
@@ -74,6 +87,19 @@ const RESET_DELAY_RE = /reset in (\d+)s/i;
 export function classifyError(errorMsg: string, retryAfterMs?: number): ErrorClass {
   const isPermanent = PERMANENT_RE.test(errorMsg);
   const isRateLimit = RATE_LIMIT_RE.test(errorMsg) || AFFORDABILITY_RE.test(errorMsg);
+  const isUnsupportedModel =
+    UNSUPPORTED_MODEL_MODEL_RE.test(errorMsg) &&
+    UNSUPPORTED_MODEL_INDICATOR_RE.test(errorMsg) &&
+    UNSUPPORTED_MODEL_SCOPE_RE.test(errorMsg);
+
+  // 0. Unsupported model (account/plan entitlement rejection) — checked before
+  //    `permanent` because PERMANENT_RE also matches /account/i and would
+  //    otherwise swallow these errors, blocking the blocklist-driven fallback.
+  //    Rate limit still wins when both patterns appear (a throttled account is
+  //    not an entitlement failure).
+  if (isUnsupportedModel && !isRateLimit) {
+    return { kind: "unsupported-model" };
+  }
 
   // 1. Permanent — but rate limit takes precedence
   if (isPermanent && !isRateLimit) {

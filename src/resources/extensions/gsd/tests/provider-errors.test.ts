@@ -147,6 +147,49 @@ test("classifyError: rate limit takes precedence over auth keywords", () => {
   assert.ok(isTransient(result));
 });
 
+// ── unsupported-model: account/plan entitlement rejection (#4513) ──────────
+
+test("classifyError: Codex ChatGPT-account entitlement rejection is unsupported-model", () => {
+  const result = classifyError(
+    "The 'gpt-5.1-codex-max' model is not supported when using Codex with a ChatGPT account.",
+  );
+  assert.equal(result.kind, "unsupported-model");
+  assert.ok(!isTransient(result));
+});
+
+test("classifyError: 'model not available for this plan' is unsupported-model", () => {
+  const result = classifyError("This model is not available for your current plan.");
+  assert.equal(result.kind, "unsupported-model");
+});
+
+test("classifyError: 'account does not have access to model' is unsupported-model", () => {
+  const result = classifyError("Your account does not have access to the gpt-5 model.");
+  assert.equal(result.kind, "unsupported-model");
+});
+
+test("classifyError: 'tier does not support deployment' is unsupported-model", () => {
+  const result = classifyError("The free tier does not support this deployment.");
+  assert.equal(result.kind, "unsupported-model");
+});
+
+test("classifyError: 'account suspended' stays permanent (not unsupported-model)", () => {
+  const result = classifyError("Your account has been suspended. Contact support.");
+  assert.equal(result.kind, "permanent");
+});
+
+test("classifyError: 'invalid account' stays permanent", () => {
+  const result = classifyError("invalid account credentials");
+  assert.equal(result.kind, "permanent");
+});
+
+test("classifyError: rate limit on unsupported-model phrasing stays rate-limit", () => {
+  // A throttled account is not an entitlement failure.
+  const result = classifyError(
+    "429 rate limit — model not supported when using your account right now",
+  );
+  assert.equal(result.kind, "rate-limit");
+});
+
 // ── STREAM_RE: V8 JSON parse error variants (#2916) ────────────────────────
 
 test("classifyError: 'Expected comma/brace after property value in JSON' is transient stream", () => {

@@ -16,6 +16,7 @@ import {
   isTransient,
   type ErrorClass,
 } from "../error-classifier.js";
+import { blockModel, isModelBlocked } from "../blocked-models.js";
 
 const retryState = createRetryState();
 const MAX_NETWORK_RETRIES = 2;
@@ -123,6 +124,102 @@ export async function handleAgentEnd(
 
     // ── 1. Classify using rawErrorMsg to avoid prose false-positives ────
     const cls = classifyError(rawErrorMsg, explicitRetryAfterMs);
+
+    // ── 1a. Unsupported-model: provider rejected this model for the current
+    //        account/plan at request time (#4513).  Persist a block so the
+    //        same dead model isn't reselected on the next /gsd auto restart,
+    //        then try a fallback before pausing.
+    if (cls.kind === "unsupported-model") {
+      const dash = getAutoDashboardData();
+      const rejectedProvider = ctx.model?.provider;
+      const rejectedId = ctx.model?.id;
+      if (dash.basePath && rejectedProvider && rejectedId) {
+        try {
+          blockModel(dash.basePath, rejectedProvider, rejectedId, rawErrorMsg || "unsupported for account");
+          ctx.ui.notify(
+            `Blocked ${rejectedProvider}/${rejectedId} for this project — provider rejected it for the current account.`,
+            "warning",
+          );
+        } catch (err) {
+          const m = err instanceof Error ? err.message : String(err);
+          logWarning("bootstrap", `Failed to persist blocked model: ${m}`);
+        }
+      }
+
+      // Try configured fallback chain, skipping anything already blocked.
+      if (dash.currentUnit && dash.basePath) {
+        const modelConfig = resolveModelWithFallbacksForUnit(dash.currentUnit.type);
+        if (modelConfig && modelConfig.fallbacks.length > 0) {
+          const availableModels = ctx.modelRegistry.getAvailable();
+          let cursorModelId: string | undefined = ctx.model?.id;
+          while (true) {
+            const nextModelId = getNextFallbackModel(cursorModelId, modelConfig);
+            if (!nextModelId) break;
+            const candidate = resolveModelId(nextModelId, availableModels, ctx.model?.provider);
+            if (candidate && !isModelBlocked(dash.basePath, candidate.provider, candidate.id)) {
+              const ok = await pi.setModel(candidate, { persist: false });
+              if (ok) {
+                setCurrentDispatchedModelId({ provider: candidate.provider, id: candidate.id });
+                ctx.ui.notify(
+                  `Switched to fallback ${candidate.provider}/${candidate.id} after account entitlement rejection.`,
+                  "warning",
+                );
+                pi.sendMessage(
+                  { customType: "gsd-auto-timeout-recovery", content: "Continue execution.", display: false },
+                  { triggerTurn: true },
+                );
+                return;
+              }
+            }
+            cursorModelId = nextModelId;
+          }
+        }
+
+        // Fallback chain exhausted — try the auto-mode start model if it isn't
+        // the same one we just blocked and isn't itself blocked.
+        const sessionModel = getAutoModeStartModel();
+        if (
+          sessionModel &&
+          !(sessionModel.provider === rejectedProvider && sessionModel.id === rejectedId) &&
+          !isModelBlocked(dash.basePath, sessionModel.provider, sessionModel.id)
+        ) {
+          const startModel = ctx.modelRegistry
+            .getAvailable()
+            .find((m) => m.provider === sessionModel.provider && m.id === sessionModel.id);
+          if (startModel) {
+            const ok = await pi.setModel(startModel, { persist: false });
+            if (ok) {
+              setCurrentDispatchedModelId({ provider: startModel.provider, id: startModel.id });
+              ctx.ui.notify(
+                `Restored auto-mode start model ${startModel.provider}/${startModel.id} after entitlement rejection.`,
+                "warning",
+              );
+              pi.sendMessage(
+                { customType: "gsd-auto-timeout-recovery", content: "Continue execution.", display: false },
+                { triggerTurn: true },
+              );
+              return;
+            }
+          }
+        }
+      }
+
+      // No usable fallback — pause with a clearly named message.
+      const blockedLabel = rejectedProvider && rejectedId ? `${rejectedProvider}/${rejectedId}` : "current model";
+      const pauseDetail = `Model ${blockedLabel} blocked for this account${errorDetail}. Configure a different model and restart /gsd auto.`;
+      await pauseAutoForProviderError(ctx.ui, pauseDetail, () =>
+        pauseAuto(ctx, pi, {
+          message: pauseDetail,
+          category: "provider",
+          isTransient: false,
+        }),
+      {
+        isRateLimit: false,
+        isTransient: false,
+        retryAfterMs: 0,
+      });
+      return;
+    }
 
     // ── 1b. Defer to Core RetryHandler for most transient errors ────────
     // Core retries transient failures in-session after this handler.
