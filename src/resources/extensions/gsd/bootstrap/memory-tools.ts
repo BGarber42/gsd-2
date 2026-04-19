@@ -50,6 +50,11 @@ export function registerMemoryTools(pi: ExtensionAPI): void {
       ),
       tags: Type.Optional(Type.Array(Type.String(), { description: "Free-form tags (reserved for future use)" })),
       scope: Type.Optional(Type.String({ description: "Scope name (reserved for future use; defaults to project)" })),
+      structuredFields: Type.Optional(
+        Type.Record(Type.String(), Type.Unknown(), {
+          description: "Optional structured payload preserved alongside content (ADR-013). Use for decisions to retain scope/decision/choice/rationale/made_by/revisable. Omit for plain captures.",
+        }),
+      ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       const ok = await ensureDbOpen();

@@ -36,6 +36,12 @@ export interface Memory {
   hit_count: number;
   scope: string;
   tags: string[];
+  /**
+   * ADR-013 Step 2: optional structured payload. NULL for memories captured
+   * via plain capture_thought. Populated on memories backfilled from the
+   * decisions table (Step 5) with the original scope/decision/choice/etc.
+   */
+  structured_fields: Record<string, unknown> | null;
 }
 
 export type MemoryActionCreate = {
@@ -45,6 +51,7 @@ export type MemoryActionCreate = {
   confidence?: number;
   scope?: string;
   tags?: string[];
+  structuredFields?: Record<string, unknown> | null;
 };
 
 export type MemoryActionUpdate = {
@@ -108,7 +115,20 @@ function rowToMemory(row: Record<string, unknown>): Memory {
     hit_count: row['hit_count'] as number,
     scope: (row['scope'] as string) ?? 'project',
     tags: parseTags(row['tags']),
+    structured_fields: parseStructuredFields(row['structured_fields']),
   };
+}
+
+function parseStructuredFields(raw: unknown): Record<string, unknown> | null {
+  if (typeof raw !== 'string' || raw.length === 0) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function parseTags(raw: unknown): string[] {
@@ -477,6 +497,7 @@ export function createMemory(fields: {
   source_unit_id?: string;
   scope?: string;
   tags?: string[];
+  structuredFields?: Record<string, unknown> | null;
 }): string | null {
   if (!isDbAvailable()) return null;
   const adapter = _getAdapter();
@@ -497,6 +518,7 @@ export function createMemory(fields: {
       updatedAt: now,
       scope: fields.scope ?? 'project',
       tags: fields.tags ?? [],
+      structuredFields: fields.structuredFields ?? null,
     });
     // Derive the real ID from the assigned seq (SELECT is still fine via adapter)
     const row = adapter.prepare('SELECT seq FROM memories WHERE id = :id').get({ ':id': placeholder });
@@ -684,6 +706,10 @@ export function applyMemoryActions(
               source_unit_id: unitId,
               scope: action.scope,
               tags: action.tags,
+              // ADR-013: forward structured payload through the action layer so
+              // bulk applyMemoryActions callers (extraction, ingestion) don't
+              // silently drop it.
+              structuredFields: action.structuredFields ?? null,
             });
             break;
           case 'UPDATE':

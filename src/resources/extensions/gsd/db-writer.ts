@@ -529,6 +529,48 @@ export async function saveDecisionToDb(
     clearPathCache();
     clearParseCache();
 
+    // ADR-013 dual-write: keep the memory store in sync with every decision
+    // persisted via the legacy gsd_save_decision path. Without this, prompts
+    // that still call gsd_save_decision (discuss.md, plan-milestone.md,
+    // guided-plan-slice.md, et al. during the deprecation window) would
+    // create decisions rows invisible to memory_query and loadMemoryBlock.
+    // Best-effort — never throw, never roll back the decision on failure.
+    try {
+      const { createMemory } = await import('./memory-store.js');
+      const decisionText = (fields.decision ?? '').trim();
+      const choiceText = (fields.choice ?? '').trim();
+      const rationaleText = (fields.rationale ?? '').trim();
+      const contentParts: string[] = [];
+      if (decisionText) contentParts.push(decisionText);
+      if (choiceText) contentParts.push(`Chose: ${choiceText}.`);
+      if (rationaleText) contentParts.push(`Rationale: ${rationaleText}.`);
+      const content = contentParts.join(' ').slice(0, 600);
+      if (content) {
+        createMemory({
+          category: 'architecture',
+          content,
+          scope: fields.scope || 'project',
+          confidence: 0.85,
+          structuredFields: {
+            sourceDecisionId: id,
+            when_context: fields.when_context ?? '',
+            scope: fields.scope,
+            decision: fields.decision,
+            choice: fields.choice,
+            rationale: fields.rationale,
+            made_by: fields.made_by ?? 'agent',
+            revisable: fields.revisable ?? '',
+          },
+        });
+      }
+    } catch (mirrorErr) {
+      logError('manifest', 'memory-store mirror write failed (non-fatal)', {
+        fn: 'saveDecisionToDb',
+        decisionId: id,
+        error: String((mirrorErr as Error).message),
+      });
+    }
+
     return { id };
   } catch (err) {
     logError('manifest', 'saveDecisionToDb failed', { fn: 'saveDecisionToDb', error: String((err as Error).message) });

@@ -18,8 +18,10 @@ Goal semantics:
 ## Instructions
 
 1. Read `.gsd/debug/sessions/{{slug}}.json` for any prior session context.
+1a. Call `memory_query` with keywords from the issue (error text, subsystem, file paths). A prior session may have captured this exact gotcha — finding it now saves the investigation.
 2. Investigate the reported issue in `{{workingDirectory}}`.
 3. Follow the goal constraint above strictly.
 4. When complete, surface a clear summary: what failed, why, and what was done (or what a fix would require for root-cause-only mode).
+5. Once root cause is identified, call `capture_thought` with `category: "gotcha"` so future debug sessions can find it via `memory_query`. Keep the content to 1–3 sentences — the symptom, the root cause, and the fix or guard.
 
 {{skillActivation}}

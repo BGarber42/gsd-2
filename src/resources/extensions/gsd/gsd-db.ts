@@ -180,7 +180,7 @@ function openRawDb(path: string): unknown {
   return new Database(path);
 }
 
-const SCHEMA_VERSION = 20;
+const SCHEMA_VERSION = 21;
 
 function indexExists(db: DbAdapter, name: string): boolean {
   return !!db.prepare(
@@ -283,7 +283,8 @@ function initSchema(db: DbAdapter, fileBacked: boolean): void {
         superseded_by TEXT DEFAULT NULL,
         hit_count INTEGER NOT NULL DEFAULT 0,
         scope TEXT NOT NULL DEFAULT 'project',
-        tags TEXT NOT NULL DEFAULT '[]'
+        tags TEXT NOT NULL DEFAULT '[]',
+        structured_fields TEXT DEFAULT NULL
       )
     `);
 
@@ -1167,6 +1168,21 @@ function migrateSchema(db: DbAdapter): void {
       db.exec("CREATE INDEX IF NOT EXISTS idx_memory_relations_to ON memory_relations(to_id)");
       db.prepare("INSERT INTO schema_version (version, applied_at) VALUES (:version, :applied_at)").run({
         ":version": 20,
+        ":applied_at": new Date().toISOString(),
+      });
+    }
+
+    if (currentVersion < 21) {
+      // ADR-013 Step 2: preserve structured fields (gsd_save_decision's
+      // scope/decision/choice/rationale/made_by/revisable) on memories rows so
+      // the eventual decisions->memories cutover does not lose schema fidelity.
+      // Nullable JSON column — existing rows stay NULL until backfilled in Step 5.
+      // Use ensureColumn for race-safety (matches v15-v18 pattern; bare ALTER
+      // throws "duplicate column" on the loser of a concurrent open race even
+      // though the transaction wrapper protects the schema_version row).
+      ensureColumn(db, "memories", "structured_fields", "ALTER TABLE memories ADD COLUMN structured_fields TEXT DEFAULT NULL");
+      db.prepare("INSERT INTO schema_version (version, applied_at) VALUES (:version, :applied_at)").run({
+        ":version": 21,
         ":applied_at": new Date().toISOString(),
       });
     }
@@ -3608,11 +3624,19 @@ export function insertMemoryRow(args: {
   updatedAt: string;
   scope?: string;
   tags?: string[];
+  /**
+   * ADR-013 Step 2: optional structured payload preserved alongside the flat
+   * `content` field. Used to retain gsd_save_decision-style fields (scope,
+   * decision, choice, rationale, made_by, revisable) on architecture-category
+   * memories so the cutover in Step 6 is lossless. Schema is intentionally
+   * open inside the JSON; documented per category in ADR-013.
+   */
+  structuredFields?: Record<string, unknown> | null;
 }): void {
   if (!currentDb) throw new GSDError(GSD_STALE_STATE, "gsd-db: No database open");
   currentDb.prepare(
-    `INSERT INTO memories (id, category, content, confidence, source_unit_type, source_unit_id, created_at, updated_at, scope, tags)
-     VALUES (:id, :category, :content, :confidence, :source_unit_type, :source_unit_id, :created_at, :updated_at, :scope, :tags)`,
+    `INSERT INTO memories (id, category, content, confidence, source_unit_type, source_unit_id, created_at, updated_at, scope, tags, structured_fields)
+     VALUES (:id, :category, :content, :confidence, :source_unit_type, :source_unit_id, :created_at, :updated_at, :scope, :tags, :structured_fields)`,
   ).run({
     ":id": args.id,
     ":category": args.category,
@@ -3624,6 +3648,7 @@ export function insertMemoryRow(args: {
     ":updated_at": args.updatedAt,
     ":scope": args.scope ?? "project",
     ":tags": JSON.stringify(args.tags ?? []),
+    ":structured_fields": args.structuredFields == null ? null : JSON.stringify(args.structuredFields),
   });
 }
 

@@ -56,7 +56,8 @@ export type LogComponent =
   | "safety"        // LLM safety harness
   | "ecosystem"     // GSD ecosystem extension loader and dispatch
   | "memory-embeddings" // Memory layer embedding generation
-  | "memory-ingest";    // Memory layer ingestion pipeline
+  | "memory-ingest"     // Memory layer ingestion pipeline
+  | "memory-backfill";  // ADR-013: decisions->memories backfill
 
 export interface LogEntry {
   ts: string;

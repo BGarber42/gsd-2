@@ -48,6 +48,14 @@ export interface MemoryCaptureParams {
   confidence?: number;
   tags?: string[];
   scope?: string;
+  /**
+   * ADR-013 Step 2: optional structured payload preserved verbatim on the
+   * memories row. Used when capturing decisions that need to retain
+   * gsd_save_decision-style fields (scope, decision, choice, rationale,
+   * made_by, revisable) so the eventual cutover (Step 6) is lossless.
+   * Plain pattern/gotcha/convention captures may omit this entirely.
+   */
+  structuredFields?: Record<string, unknown> | null;
 }
 
 const VALID_CATEGORIES = new Set([
@@ -87,7 +95,8 @@ export function executeMemoryCapture(params: MemoryCaptureParams): ToolExecution
   const scope = normalizeScope(params.scope);
   const tags = normalizeTags(params.tags);
 
-  const id = createMemory({ category, content, confidence, scope, tags });
+  const structuredFields = normalizeStructuredFields(params.structuredFields);
+  const id = createMemory({ category, content, confidence, scope, tags, structuredFields });
   if (!id) {
     return {
       content: [{ type: "text", text: "Error: failed to create memory." }],
@@ -111,6 +120,17 @@ function normalizeScope(value: unknown): string {
 function normalizeTags(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((t): t is string => typeof t === "string" && t.trim().length > 0).slice(0, 10);
+}
+
+function normalizeStructuredFields(value: unknown): Record<string, unknown> | null {
+  if (value == null) return null;
+  if (typeof value !== "object" || Array.isArray(value)) return null;
+  // Only accept plain objects (Object.prototype or null prototype). Class
+  // instances and exotic objects won't round-trip cleanly through JSON, so
+  // reject them here instead of producing a partially-serialized payload.
+  const proto = Object.getPrototypeOf(value);
+  if (proto !== null && proto !== Object.prototype) return null;
+  return value as Record<string, unknown>;
 }
 
 function clampConfidence(value: unknown): number {
@@ -248,6 +268,15 @@ function includeSupersededMemories(rankedActive: Memory[]): Memory[] {
           /* leave empty */
         }
       }
+      let structuredFields: Record<string, unknown> | null = null;
+      if (typeof row["structured_fields"] === "string" && (row["structured_fields"] as string).length > 0) {
+        try {
+          const parsed = JSON.parse(row["structured_fields"] as string);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            structuredFields = parsed as Record<string, unknown>;
+          }
+        } catch { /* leave null */ }
+      }
       return {
         seq: row["seq"] as number,
         id: row["id"] as string,
@@ -262,6 +291,7 @@ function includeSupersededMemories(rankedActive: Memory[]): Memory[] {
         hit_count: row["hit_count"] as number,
         scope: (row["scope"] as string) ?? "project",
         tags,
+        structured_fields: structuredFields,
       };
     });
   } catch {

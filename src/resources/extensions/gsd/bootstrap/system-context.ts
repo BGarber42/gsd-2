@@ -111,35 +111,20 @@ export async function buildBeforeAgentStartResult(
     );
   }
 
-  let memoryBlock = "";
+  // ADR-013 step 5: opportunistic decisions->memories backfill. Idempotent
+  // and best-effort — first run absorbs the existing decisions table into
+  // the memory store; subsequent runs are a single sentinel SELECT.
   try {
-    const { formatMemoriesForPrompt, getActiveMemoriesRanked, queryMemoriesRanked } = await import("../memory-store.js");
-
-    // Always-on "critical" set — small, stable memories that belong in every
-    // turn (gotchas, environment, conventions). Ranked by the existing score.
-    const CRITICAL_CATEGORIES = new Set(["gotcha", "environment", "convention"]);
-    const allRanked = getActiveMemoriesRanked(60);
-    const critical = allRanked.filter((m) => CRITICAL_CATEGORIES.has(m.category)).slice(0, 5);
-    const criticalIds = new Set(critical.map((m) => m.id));
-
-    // Prompt-relevance set — hybrid FTS5 + (future) semantic retrieval.
-    let relevant: typeof allRanked = [];
-    const userPrompt = (event.prompt ?? "").trim();
-    if (userPrompt) {
-      const hits = queryMemoriesRanked({ query: userPrompt, k: 10 });
-      relevant = hits.map((h) => h.memory).filter((m) => !criticalIds.has(m.id));
-    }
-
-    const merged = [...critical, ...relevant];
-    if (merged.length > 0) {
-      const formatted = formatMemoriesForPrompt(merged, 2000);
-      if (formatted) {
-        memoryBlock = `\n\n${formatted}`;
-      }
+    const { backfillDecisionsToMemories } = await import("../memory-backfill.js");
+    const written = backfillDecisionsToMemories();
+    if (written > 0) {
+      ctx.ui.notify(`GSD: backfilled ${written} decision${written === 1 ? "" : "s"} into the memory store (ADR-013).`, "info");
     }
   } catch (e) {
-    logWarning("bootstrap", `memory block fetch failed: ${(e as Error).message}`);
+    logWarning("bootstrap", `decisions backfill failed: ${(e as Error).message}`);
   }
+
+  const memoryBlock = await loadMemoryBlock(event.prompt ?? "");
 
   let newSkillsBlock = "";
   if (hasSkillSnapshot()) {
@@ -218,6 +203,64 @@ export async function buildBeforeAgentStartResult(
     systemPrompt: fullSystem,
     ...(contextMessage ? { message: contextMessage } : {}),
   };
+}
+
+/**
+ * ADR-013 step 4 — auto-injection parity for the memories table.
+ *
+ * Mirrors loadKnowledgeBlock by producing a labeled, deterministic block
+ * combining two memory sets:
+ *
+ * 1. Always-on "critical" set — top-ranked active memories in categories
+ *    that future GSD turns generally want without asking. After ADR-013
+ *    expands this to include "architecture", these memories serve as the
+ *    auto-injected replacement for inlineDecisionsFromDb when the cutover
+ *    in step 6 lands.
+ * 2. Prompt-relevance set — FTS5/semantic hits against the current user
+ *    prompt, deduplicated against the critical set.
+ *
+ * Both sets are ranked, merged, and rendered via formatMemoriesForPrompt
+ * with a token-budget cap. Failures degrade gracefully — the function never
+ * throws and returns "" so the system prompt construction continues.
+ */
+export async function loadMemoryBlock(userPrompt: string): Promise<string> {
+  try {
+    const { formatMemoriesForPrompt, getActiveMemoriesRanked, queryMemoriesRanked } = await import("../memory-store.js");
+
+    // Categories that belong in every turn. Pre-ADR-013 this was just
+    // {gotcha, environment, convention}. ADR-013 adds "architecture" so
+    // decision-equivalent memories survive the inlineDecisionsFromDb cutover
+    // in step 6.
+    const CRITICAL_CATEGORIES = new Set(["gotcha", "environment", "convention", "architecture"]);
+    const CRITICAL_CAP = 8;
+    const QUERY_K = 10;
+    // ~1 token ≈ 4 chars. 4000 chars ≈ 1000 tokens — comfortably under the
+    // KNOWLEDGE.md 4KB warning threshold and roughly twice the pre-ADR-013
+    // budget so the absorbed DECISIONS surface fits.
+    const CHAR_BUDGET = 4000;
+
+    const allRanked = getActiveMemoriesRanked(80);
+    const critical = allRanked.filter((m) => CRITICAL_CATEGORIES.has(m.category)).slice(0, CRITICAL_CAP);
+    const criticalIds = new Set(critical.map((m) => m.id));
+
+    let relevant: typeof allRanked = [];
+    const trimmed = userPrompt.trim();
+    if (trimmed) {
+      const hits = queryMemoriesRanked({ query: trimmed, k: QUERY_K });
+      relevant = hits.map((h) => h.memory).filter((m) => !criticalIds.has(m.id));
+    }
+
+    const merged = [...critical, ...relevant];
+    if (merged.length === 0) return "";
+
+    const formatted = formatMemoriesForPrompt(merged, CHAR_BUDGET);
+    if (!formatted) return "";
+
+    return `\n\n[MEMORY — Critical and prompt-relevant memories from the GSD memory store]\n\n${formatted}`;
+  } catch (e) {
+    logWarning("bootstrap", `memory block fetch failed: ${(e as Error).message}`);
+    return "";
+  }
 }
 
 export function loadKnowledgeBlock(gsdHomeDir: string, cwd: string): { block: string; globalSizeKb: number } {

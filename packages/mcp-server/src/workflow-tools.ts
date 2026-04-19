@@ -599,6 +599,12 @@ export const WORKFLOW_TOOL_NAMES = [
   "gsd_complete_task",
   "gsd_milestone_status",
   "gsd_journal_query",
+  // ADR-013 step 3: memory-store tools exposed to external MCP clients.
+  // gsd_memory_graph is namespaced to avoid collision with the existing
+  // gsd_graph tool (project knowledge graph from .gsd/ artifacts).
+  "gsd_capture_thought",
+  "gsd_memory_query",
+  "gsd_memory_graph",
 ] as const;
 
 const DEFAULT_WORKFLOW_OP_TIMEOUT_MS = 5 * 60 * 1000;
@@ -1646,6 +1652,131 @@ export function registerWorkflowTools(server: McpToolServer): void {
         return { content: [{ type: "text" as const, text: "No matching journal entries found." }] };
       }
       return { content: [{ type: "text" as const, text: JSON.stringify(entries, null, 2) }] };
+    },
+  );
+
+  // ─── ADR-013 step 3 — memory-store tools for external MCP clients ────────
+  //
+  // The same three tools the LLM sees in-process as `capture_thought`,
+  // `memory_query`, and `gsd_graph` (the memory variant). MCP exposes them
+  // under the gsd_* prefix and renames the memory graph to gsd_memory_graph
+  // to avoid collision with the project knowledge graph tool registered as
+  // `gsd_graph` in server.ts.
+
+  const MEMORY_CATEGORY = z.enum([
+    "architecture",
+    "convention",
+    "gotcha",
+    "preference",
+    "environment",
+    "pattern",
+  ]);
+
+  const captureThoughtSchema = z.object({
+    projectDir: z.string().optional(),
+    category: MEMORY_CATEGORY,
+    // Reject empty / whitespace-only content at the schema layer so the LLM
+    // never produces a memory row with no searchable text.
+    content: z.string().trim().min(1, "content must be a non-empty trimmed string"),
+    confidence: z.number().min(0.1).max(0.99).optional(),
+    tags: z.array(z.string()).optional(),
+    scope: z.string().optional(),
+    structuredFields: z.record(z.string(), z.unknown()).optional(),
+  });
+  const captureThoughtParams = {
+    projectDir: z.string().optional().describe("Absolute path to the project directory (defaults to MCP server cwd)"),
+    category: MEMORY_CATEGORY.describe("Memory category"),
+    content: z.string().describe("Memory text (1-3 sentences, no secrets)"),
+    confidence: z.number().min(0.1).max(0.99).optional().describe("0.1-0.99, default 0.8"),
+    tags: z.array(z.string()).optional().describe("Free-form tags"),
+    scope: z.string().optional().describe("Scope name; defaults to 'project'"),
+    structuredFields: z.record(z.string(), z.unknown()).optional().describe("ADR-013 structured payload (e.g. decision fields)"),
+  };
+
+  server.tool(
+    "gsd_capture_thought",
+    "Record a durable project insight into the GSD memory store. Categories: architecture, convention, gotcha, preference, environment, pattern. Mirrors the in-process capture_thought tool for external MCP clients.",
+    captureThoughtParams,
+    async (args: Record<string, unknown>) => {
+      const { projectDir, ...params } = parseWorkflowArgs(captureThoughtSchema, args);
+      await enforceWorkflowWriteGate("gsd_capture_thought", projectDir);
+      return runSerializedWorkflowDbOperation(projectDir, async () => {
+        const { executeMemoryCapture } = await importLocalModule<any>(
+          "../../../src/resources/extensions/gsd/tools/memory-tools.js",
+        );
+        return executeMemoryCapture(params);
+      });
+    },
+  );
+
+  const memoryQuerySchema = z.object({
+    projectDir: z.string().optional(),
+    // Match the documented "2+ char terms" contract in the in-process
+    // memory_query tool — reject sub-2-char queries at the schema layer.
+    query: z.string().trim().min(2, "query must be at least 2 characters"),
+    k: z.number().int().min(1).max(50).optional(),
+    category: MEMORY_CATEGORY.optional(),
+    scope: z.string().optional(),
+    tag: z.string().optional(),
+    include_superseded: z.boolean().optional(),
+    reinforce_hits: z.boolean().optional(),
+  });
+  const memoryQueryParams = {
+    projectDir: z.string().optional().describe("Absolute path to the project directory (defaults to MCP server cwd)"),
+    query: z.string().describe("Keyword query (2+ char terms)"),
+    k: z.number().int().min(1).max(50).optional().describe("Max results (default 10, max 50)"),
+    category: MEMORY_CATEGORY.optional().describe("Restrict to a single category"),
+    scope: z.string().optional().describe("Only include memories with this scope"),
+    tag: z.string().optional().describe("Only include memories tagged with this value"),
+    include_superseded: z.boolean().optional().describe("Include superseded memories (default false)"),
+    reinforce_hits: z.boolean().optional().describe("Increment hit_count on returned memories (default false)"),
+  };
+
+  server.tool(
+    "gsd_memory_query",
+    "Search the GSD memory store by keyword. Returns ranked memories with id, category, content, confidence, scope, and tags. Mirrors the in-process memory_query tool for external MCP clients.",
+    memoryQueryParams,
+    async (args: Record<string, unknown>) => {
+      const { projectDir, ...params } = parseWorkflowArgs(memoryQuerySchema, args);
+      return runSerializedWorkflowDbOperation(projectDir, async () => {
+        const { executeMemoryQuery } = await importLocalModule<any>(
+          "../../../src/resources/extensions/gsd/tools/memory-tools.js",
+        );
+        return executeMemoryQuery(params);
+      });
+    },
+  );
+
+  const memoryGraphSchema = z.object({
+    projectDir: z.string().optional(),
+    mode: z.enum(["build", "query"]),
+    memoryId: z.string().optional(),
+    depth: z.number().int().min(0).max(5).optional(),
+    rel: z.enum(["related_to", "depends_on", "contradicts", "elaborates", "supersedes"]).optional(),
+  }).refine(
+    (val) => val.mode !== "query" || (typeof val.memoryId === "string" && val.memoryId.trim().length > 0),
+    { message: "memoryId is required and must be non-empty when mode=query", path: ["memoryId"] },
+  );
+  const memoryGraphParams = {
+    projectDir: z.string().optional().describe("Absolute path to the project directory (defaults to MCP server cwd)"),
+    mode: z.enum(["build", "query"]).describe("build = recompute graph (placeholder), query = inspect edges"),
+    memoryId: z.string().optional().describe("Memory ID (required when mode=query)"),
+    depth: z.number().int().min(0).max(5).optional().describe("Hops to traverse (0-5, default 1)"),
+    rel: z.enum(["related_to", "depends_on", "contradicts", "elaborates", "supersedes"]).optional().describe("Only include edges with this relation type"),
+  };
+
+  server.tool(
+    "gsd_memory_graph",
+    "Inspect the relationship graph between memories. mode=query walks edges from a given memoryId. mode=build is a placeholder reserved for future graph rebuilds. Distinct from gsd_graph (project knowledge graph) — see ADR-013.",
+    memoryGraphParams,
+    async (args: Record<string, unknown>) => {
+      const { projectDir, ...params } = parseWorkflowArgs(memoryGraphSchema, args);
+      return runSerializedWorkflowDbOperation(projectDir, async () => {
+        const { executeGsdGraph } = await importLocalModule<any>(
+          "../../../src/resources/extensions/gsd/tools/memory-tools.js",
+        );
+        return executeGsdGraph(params);
+      });
     },
   );
 }

@@ -44,6 +44,7 @@ Narrate your decomposition reasoning — why you're grouping work this way, what
 
 Then:
 0. If `REQUIREMENTS.md` was preloaded above, identify which Active requirements the roadmap says this slice owns or supports. These are the requirements this plan must deliver — every owned requirement needs at least one task that directly advances it, and verification must prove the requirement is met.
+0a. Call `memory_query` with keywords from the slice title and the source files listed below. Prior architectural decisions, conventions, and gotchas in this area should inform task decomposition — not be re-derived during execution.
 1. Read the templates:
    - `~/.gsd/agent/extensions/gsd/templates/plan.md`
    - `~/.gsd/agent/extensions/gsd/templates/task-plan.md`
