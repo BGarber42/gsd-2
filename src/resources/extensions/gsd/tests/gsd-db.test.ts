@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { createRequire } from 'node:module';
 import {
   openDatabase,
   closeDatabase,
@@ -25,6 +26,8 @@ import {
   getSliceTasks,
   checkpointDatabase,
 } from '../gsd-db.ts';
+
+const _require = createRequire(import.meta.url);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Helper: create a temp file path for file-backed DB tests
@@ -56,6 +59,19 @@ function withPlatform<T>(platform: NodeJS.Platform, fn: () => T): T {
     return fn();
   } finally {
     Object.defineProperty(process, 'platform', { value: original });
+  }
+}
+
+function openRawSqliteForTest(dbPath: string): { exec(sql: string): void; close(): void } {
+  try {
+    const mod = _require('node:sqlite') as { DatabaseSync: new (path: string) => { exec(sql: string): void; close(): void } };
+    return new mod.DatabaseSync(dbPath);
+  } catch {
+    const mod = _require('better-sqlite3') as
+      | ((path: string) => { exec(sql: string): void; close(): void })
+      | { default: new (path: string) => { exec(sql: string): void; close(): void } };
+    const Database = typeof mod === 'function' ? mod : mod.default;
+    return new Database(dbPath);
   }
 }
 
@@ -400,6 +416,53 @@ describe('gsd-db', () => {
       "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_verification_evidence_dedup'",
     ).get();
     assert.equal(indexRow?.['name'], 'idx_verification_evidence_dedup', 'dedup index should be recreated on reopen');
+
+    cleanup(dbPath);
+  });
+
+  test('gsd-db: legacy DB missing memories.scope opens and bootstraps index columns', () => {
+    const dbPath = tempDbPath();
+    const legacyDb = openRawSqliteForTest(dbPath);
+    legacyDb.exec(`
+      CREATE TABLE schema_version (
+        version INTEGER NOT NULL,
+        applied_at TEXT NOT NULL
+      );
+      INSERT INTO schema_version(version, applied_at) VALUES (17, '2026-04-20T00:00:00.000Z');
+      CREATE TABLE memories (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT NOT NULL UNIQUE,
+        category TEXT NOT NULL,
+        content TEXT NOT NULL,
+        confidence REAL NOT NULL DEFAULT 0.8,
+        source_unit_type TEXT,
+        source_unit_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        superseded_by TEXT DEFAULT NULL,
+        hit_count INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT INTO memories(id, category, content, created_at, updated_at)
+      VALUES ('legacy-memory', 'note', 'legacy row', '2026-04-20T00:00:00.000Z', '2026-04-20T00:00:00.000Z');
+    `);
+    legacyDb.close();
+
+    assert.equal(openDatabase(dbPath), true, 'openDatabase should succeed for legacy DB missing memories.scope');
+
+    const adapter = _getAdapter()!;
+    const columns = adapter.prepare('PRAGMA table_info(memories)').all();
+    const names = columns.map((row) => row['name']);
+    assert.ok(names.includes('scope'), 'memories.scope should be added during bootstrap');
+    assert.ok(names.includes('tags'), 'memories.tags should be added during bootstrap');
+
+    const row = adapter.prepare(`SELECT scope, tags FROM memories WHERE id = 'legacy-memory'`).get();
+    assert.equal(row?.['scope'], 'project', 'legacy rows should receive default scope');
+    assert.equal(row?.['tags'], '[]', 'legacy rows should receive default tags');
+
+    const index = adapter.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_memories_scope'",
+    ).get();
+    assert.equal(index?.['name'], 'idx_memories_scope', 'scope index should be created after bootstrap columns are present');
 
     cleanup(dbPath);
   });

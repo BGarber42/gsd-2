@@ -563,7 +563,9 @@ function initSchema(db: DbAdapter, fileBacked: boolean): void {
     // indexes so old DBs can open far enough for the normal migration chain.
     ensureBootstrapIndexColumns(db);
 
-    db.exec("CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(scope)");
+    if (columnExists(db, "memories", "scope")) {
+      db.exec("CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(scope)");
+    }
     db.exec("CREATE INDEX IF NOT EXISTS idx_memory_sources_kind ON memory_sources(kind)");
     db.exec("CREATE INDEX IF NOT EXISTS idx_memory_sources_scope ON memory_sources(scope)");
     db.exec("CREATE INDEX IF NOT EXISTS idx_memory_relations_from ON memory_relations(from_id)");
