@@ -64,6 +64,15 @@ export interface SidecarItem {
   captureId?: string;
 }
 
+export interface PreExecFailure {
+  /** Milestone/slice that failed (e.g. "M001/S02"). */
+  unitId: string;
+  /** Verbatim blocking check strings from the failed gate run. */
+  blockingFindings: string[];
+  /** Condensed gate verdict excerpt for context (status + rationale). */
+  verdictExcerpt: string;
+}
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 export const MAX_UNIT_DISPATCHES = 3;
@@ -138,6 +147,18 @@ export class AutoSession {
 
   // ── Sidecar queue ─────────────────────────────────────────────────────
   sidecarQueue: SidecarItem[] = [];
+
+  // ── Pre-exec gate failure context (#4551) ───────────────────────────
+  /**
+   * Persisted when a pre-execution gate fails on a plan-slice or refine-slice
+   * unit. The planning → plan-slice dispatch rule reads this field and injects
+   * the failure details into the next re-dispatch prompt so the LLM can fix the
+   * specific issues instead of producing an identical plan.
+   *
+   * Cleared after it has been consumed (injected into the prompt) to avoid
+   * stale context bleeding into unrelated slices.
+   */
+  lastPreExecFailure: PreExecFailure | null = null;
 
   // ── Tool invocation errors (#2883) ──────────────────────────────────
   /** Set when a GSD tool execution ends with isError due to malformed/truncated
@@ -267,6 +288,7 @@ export class AutoSession {
     this.sidecarQueue = [];
     this.rewriteAttemptCount = 0;
     this.consecutiveCompleteBootstraps = 0;
+    this.lastPreExecFailure = null;
     this.lastToolInvocationError = null;
     this.lastGitActionFailure = null;
     this.lastGitActionStatus = null;
