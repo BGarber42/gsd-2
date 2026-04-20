@@ -126,6 +126,7 @@ import {
   formatTokenCount,
 } from "./metrics.js";
 import { setLogBasePath, logWarning, logError } from "./workflow-logger.js";
+import { preflightCleanRoot, postflightPopStash } from "./clean-root-preflight.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -1287,6 +1288,10 @@ function buildLoopDeps(): LoopDeps {
 
     // Journal
     emitJournalEvent: (entry: JournalEntry) => _emitJournalEvent(s.basePath, entry),
+
+    // Clean-root preflight gate (#2909)
+    preflightCleanRoot,
+    postflightPopStash,
   } as unknown as LoopDeps;
 }
 

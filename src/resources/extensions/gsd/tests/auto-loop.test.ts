@@ -613,6 +613,8 @@ function makeMockDeps(
     autoWorktreeBranch: () => "auto/M001",
     resolveMilestoneFile: () => null,
     reconcileMergeState: () => "clean",
+    preflightCleanRoot: () => ({ stashPushed: false, summary: "" }),
+    postflightPopStash: () => {},
     getLedger: () => null,
     getProjectTotals: () => ({ cost: 0 }),
     formatCost: (c: number) => `$${c.toFixed(2)}`,

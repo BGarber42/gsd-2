@@ -22,6 +22,7 @@ import type { CmuxLogLevel } from "../../cmux/index.js";
 import type { JournalEntry } from "../journal.js";
 import type { MergeReconcileResult } from "../auto-recovery.js";
 import type { UokTurnObserver } from "../uok/contracts.js";
+import type { PreflightResult } from "../clean-root-preflight.js";
 
 /**
  * Dependencies injected by the caller (auto.ts startAuto) so autoLoop
@@ -121,6 +122,18 @@ export interface LoopDeps {
     fileType: string,
   ) => string | null;
   reconcileMergeState: (basePath: string, ctx: ExtensionContext) => MergeReconcileResult;
+
+  // Clean-root preflight gate (#2909)
+  preflightCleanRoot: (
+    basePath: string,
+    milestoneId: string,
+    notify: (message: string, level: "info" | "warning" | "error") => void,
+  ) => PreflightResult;
+  postflightPopStash: (
+    basePath: string,
+    milestoneId: string,
+    notify: (message: string, level: "info" | "warning" | "error") => void,
+  ) => void;
 
   // Budget/context/secrets
   getLedger: () => unknown;

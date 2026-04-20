@@ -546,6 +546,12 @@ export async function runPreDispatch(
     loopState.stuckRecoveryAttempts = 0;
 
     // Worktree lifecycle on milestone transition — merge current, enter next
+    // #2909: preflight — warn + stash dirty working tree before merge
+    const preflightTransition = deps.preflightCleanRoot(
+      s.originalBasePath || s.basePath,
+      s.currentMilestoneId!,
+      ctx.ui.notify.bind(ctx.ui),
+    );
     try {
       deps.resolver.mergeAndExit(s.currentMilestoneId!, ctx.ui);
     } catch (mergeErr) {
@@ -566,6 +572,14 @@ export async function runPreDispatch(
       );
       await deps.stopAuto(ctx, pi, `Merge error on milestone ${s.currentMilestoneId}: ${String(mergeErr)}`);
       return { action: "break", reason: "merge-failed" };
+    }
+    // #2909: postflight — restore stashed changes after successful merge
+    if (preflightTransition.stashPushed) {
+      deps.postflightPopStash(
+        s.originalBasePath || s.basePath,
+        s.currentMilestoneId!,
+        ctx.ui.notify.bind(ctx.ui),
+      );
     }
 
     // PR creation (auto_pr) is handled inside mergeMilestoneToMain (#2302)
@@ -645,6 +659,12 @@ export async function runPreDispatch(
     if (incomplete.length === 0 && state.registry.length > 0) {
       // All milestones complete — merge milestone branch before stopping
       if (s.currentMilestoneId) {
+        // #2909: preflight — warn + stash dirty working tree before merge
+        const preflightAllComplete = deps.preflightCleanRoot(
+          s.originalBasePath || s.basePath,
+          s.currentMilestoneId,
+          ctx.ui.notify.bind(ctx.ui),
+        );
         try {
           deps.resolver.mergeAndExit(s.currentMilestoneId, ctx.ui);
           // Prevent stopAuto from attempting the same merge (#2645)
@@ -665,6 +685,14 @@ export async function runPreDispatch(
           );
           await deps.stopAuto(ctx, pi, `Merge error on milestone ${s.currentMilestoneId}: ${String(mergeErr)}`);
           return { action: "break", reason: "merge-failed" };
+        }
+        // #2909: postflight — restore stashed changes after successful merge
+        if (preflightAllComplete.stashPushed) {
+          deps.postflightPopStash(
+            s.originalBasePath || s.basePath,
+            s.currentMilestoneId,
+            ctx.ui.notify.bind(ctx.ui),
+          );
         }
 
         // PR creation (auto_pr) is handled inside mergeMilestoneToMain (#2302)
@@ -759,6 +787,12 @@ export async function runPreDispatch(
   if (state.phase === "complete") {
     // Milestone merge on complete (before closeout so branch state is clean)
     if (s.currentMilestoneId) {
+      // #2909: preflight — warn + stash dirty working tree before merge
+      const preflightComplete = deps.preflightCleanRoot(
+        s.originalBasePath || s.basePath,
+        s.currentMilestoneId,
+        ctx.ui.notify.bind(ctx.ui),
+      );
       try {
         deps.resolver.mergeAndExit(s.currentMilestoneId, ctx.ui);
         // Prevent stopAuto from attempting the same merge (#2645)
@@ -779,6 +813,14 @@ export async function runPreDispatch(
         );
         await deps.stopAuto(ctx, pi, `Merge error on milestone ${s.currentMilestoneId}: ${String(mergeErr)}`);
         return { action: "break", reason: "merge-failed" };
+      }
+      // #2909: postflight — restore stashed changes after successful merge
+      if (preflightComplete.stashPushed) {
+        deps.postflightPopStash(
+          s.originalBasePath || s.basePath,
+          s.currentMilestoneId,
+          ctx.ui.notify.bind(ctx.ui),
+        );
       }
 
       // PR creation (auto_pr) is handled inside mergeMilestoneToMain (#2302)
