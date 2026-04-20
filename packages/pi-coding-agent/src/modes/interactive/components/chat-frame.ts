@@ -2,7 +2,7 @@ import { truncateToWidth, visibleWidth } from "@gsd/pi-tui";
 import { theme } from "../theme/theme.js";
 import { formatTimestamp, type TimestampFormat } from "./timestamp.js";
 
-type FrameTone = "assistant" | "user" | "compaction";
+type FrameTone = "assistant" | "user" | "compaction" | "skill";
 
 function trimOuterBlankLines(lines: string[]): string[] {
 	let start = 0;
@@ -25,14 +25,14 @@ export function renderChatFrame(
 ): string[] {
 	const outerWidth = Math.max(20, width);
 	const contentWidth = Math.max(1, outerWidth - 2); // "│ " + content
+	const isPurple = opts.tone === "compaction" || opts.tone === "skill";
 	const borderColor =
 		opts.tone === "user"
 			? "border"
-			: opts.tone === "compaction"
+			: isPurple
 				? "customMessageLabel"
 				: "borderAccent";
-	const borderMuted =
-		opts.tone === "compaction" ? "customMessageLabel" : "borderMuted";
+	const borderMuted = isPurple ? "customMessageLabel" : "borderMuted";
 	const border = (s: string) => theme.fg(borderColor, s);
 	const leftRaw = `• ${opts.label}`;
 	const rightRaw =
@@ -47,7 +47,7 @@ export function renderChatFrame(
 	const labelColor =
 		opts.tone === "user"
 			? "border"
-			: opts.tone === "compaction"
+			: isPurple
 				? "customMessageLabel"
 				: "borderAccent";
 	const dashIdx = left.indexOf(" - ");
@@ -71,7 +71,7 @@ export function renderChatFrame(
 	const bodyColor =
 		opts.tone === "user"
 			? "userMessageText"
-			: opts.tone === "compaction"
+			: isPurple
 				? "customMessageText"
 				: "assistantMessageText";
 	const bodyLines = (sourceLines.length > 0 ? sourceLines : [""]).map((line) => {
