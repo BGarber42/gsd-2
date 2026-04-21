@@ -187,6 +187,13 @@ const REQUIRED_PROVIDER_CATALOG: RequiredProviderCatalogEntry[] = [
   { id: "mistral", label: "Mistral", supportsApiKey: true, supportsOAuth: false },
   { id: "minimax", label: "MiniMax", supportsApiKey: true, supportsOAuth: false },
   { id: "minimax-cn", label: "MiniMax CN", supportsApiKey: true, supportsOAuth: false },
+  // Supported by the core provider registry; configured via env/auth today.
+  { id: "ollama-cloud", label: "Ollama Cloud", supportsApiKey: false, supportsOAuth: false },
+  { id: "custom-openai", label: "Custom (OpenAI-compatible)", supportsApiKey: false, supportsOAuth: false },
+  { id: "cerebras", label: "Cerebras", supportsApiKey: false, supportsOAuth: false },
+  { id: "azure-openai-responses", label: "Azure OpenAI", supportsApiKey: false, supportsOAuth: false },
+  { id: "alibaba-coding-plan", label: "Alibaba Coding Plan", supportsApiKey: false, supportsOAuth: false },
+  { id: "alibaba-dashscope", label: "Alibaba DashScope", supportsApiKey: false, supportsOAuth: false },
   { id: "claude-code", label: "Claude Code (Local CLI)", supportsApiKey: false, supportsOAuth: false, supportsExternalCli: true, recommended: true },
 ];
 
@@ -214,6 +221,7 @@ const OPTIONAL_SECTION_CATALOG: OptionalSectionCatalogEntry[] = [
     providers: [
       { id: "discord_bot", label: "Discord", envVar: "DISCORD_BOT_TOKEN" },
       { id: "slack_bot", label: "Slack", envVar: "SLACK_BOT_TOKEN" },
+      { id: "telegram_bot", label: "Telegram", envVar: "TELEGRAM_BOT_TOKEN" },
     ],
   },
 ];

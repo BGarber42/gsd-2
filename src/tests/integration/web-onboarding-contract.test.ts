@@ -331,6 +331,8 @@ test("boot and onboarding routes expose locked required state plus explicitly sk
   assert.equal(bootPayload.onboarding.required.satisfiedBy, null);
   assert.equal(bootPayload.onboarding.optional.skippable, true);
   assert.ok(bootPayload.onboarding.optional.sections.every((section: any) => section.blocking === false));
+  const remoteQuestionsSection = bootPayload.onboarding.optional.sections.find((section: any) => section.id === "remote_questions");
+  assert.ok(remoteQuestionsSection, "remote_questions optional section must be present");
 
   const providerIds = bootPayload.onboarding.required.providers.map((provider: any) => provider.id);
   assert.deepEqual(providerIds, [
@@ -347,6 +349,12 @@ test("boot and onboarding routes expose locked required state plus explicitly sk
     "mistral",
     "minimax",
     "minimax-cn",
+    "ollama-cloud",
+    "custom-openai",
+    "cerebras",
+    "azure-openai-responses",
+    "alibaba-coding-plan",
+    "alibaba-dashscope",
     "claude-code",
   ]);
   const anthropicProvider = bootPayload.onboarding.required.providers.find((provider: any) => provider.id === "anthropic");

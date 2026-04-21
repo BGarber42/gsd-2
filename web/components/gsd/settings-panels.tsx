@@ -264,6 +264,47 @@ export function PrefsPanel() {
                 {prefs.autoVisualize ? "on" : "off"}
               </span>
             </KvRow>
+            <KvRow label="Service Tier">
+              <span className="font-mono text-[10px]">{prefs.serviceTier ?? "default"}</span>
+            </KvRow>
+            <KvRow label="Show Token Cost">
+              <span className={prefs.showTokenCost ? "text-success" : "text-muted-foreground"}>
+                {prefs.showTokenCost ? "on" : "off"}
+              </span>
+            </KvRow>
+            <KvRow label="Context Selection">
+              <span className="font-mono text-[10px]">{prefs.contextSelection ?? "full"}</span>
+            </KvRow>
+            <KvRow label="Context Window">
+              <span className="font-mono text-[10px]">
+                {typeof prefs.contextWindowOverride === "number" ? prefs.contextWindowOverride : "auto"}
+              </span>
+            </KvRow>
+            <KvRow label="Language">
+              <span className="font-mono text-[10px]">{prefs.language ?? "default"}</span>
+            </KvRow>
+            <KvRow label="Reactive Exec">
+              <span className={prefs.reactiveExecution?.enabled ? "text-success" : "text-muted-foreground"}>
+                {prefs.reactiveExecution?.enabled ? "on" : "off"}
+              </span>
+            </KvRow>
+            <KvRow label="Gate Eval">
+              <span className={prefs.gateEvaluation?.enabled ? "text-success" : "text-muted-foreground"}>
+                {prefs.gateEvaluation?.enabled ? "on" : "off"}
+              </span>
+            </KvRow>
+            <KvRow label="Slice Parallel">
+              <span className={prefs.sliceParallel?.enabled ? "text-success" : "text-muted-foreground"}>
+                {prefs.sliceParallel?.enabled ? "on" : "off"}
+              </span>
+            </KvRow>
+            <KvRow label="Phase Controls">
+              <span className="font-mono text-[10px]">
+                {prefs.phases
+                  ? Object.values(prefs.phases).filter((value) => value === true).length
+                  : 0} enabled
+              </span>
+            </KvRow>
             <KvRow label="Preference Scope">
               <span className="font-mono text-[10px]">{prefs.scope}</span>
             </KvRow>
@@ -480,6 +521,8 @@ export function BudgetPanel() {
               value={prefs?.tokenProfile ?? "balanced"}
               variant={tokenProfileVariant(prefs?.tokenProfile)}
             />
+            <Pill label="Service Tier" value={prefs?.serviceTier ?? "default"} />
+            <Pill label="Token Cost" value={prefs?.showTokenCost ? "shown" : "hidden"} />
           </div>
 
           {/* Context budget allocations */}

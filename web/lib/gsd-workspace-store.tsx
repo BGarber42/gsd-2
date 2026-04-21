@@ -4789,8 +4789,15 @@ export class GSDWorkspaceStore {
     })
 
     const payload = (await response.json()) as OnboardingApiPayload
-    if (!payload.onboarding) {
+    if (!response.ok) {
+      if (payload.onboarding) {
+        this.applyOnboardingState(payload.onboarding)
+      }
       throw new Error(payload.error ?? `Onboarding action failed with ${response.status}`)
+    }
+
+    if (!payload.onboarding) {
+      throw new Error(`Onboarding action returned no state (${response.status})`)
     }
 
     this.applyOnboardingState(payload.onboarding)
