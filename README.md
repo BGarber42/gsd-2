@@ -27,49 +27,31 @@ One command. Walk away. Come back to a built project with clean git history.
 
 ---
 
-## What's New in v2.76
+## What's New in v2.77
 
-### Memory System
+### Context Mode & Execution
 
-- **Persistent agent memory** — new `capture_thought`, `memory_query`, and `gsd_graph` tools let GSD store, retrieve, and relate thoughts across sessions (Phase 1).
-- **Ingestion + scopes/tags** — memories can be scoped (project, milestone, slice) and tagged for filtering (Phase 2).
-- **Hybrid retrieval** — keyword + semantic search over stored memory for higher-recall lookup (Phase 3).
-- **Knowledge graph relationships** — memories link into a queryable graph, feeding planning and dispatch context (Phase 4).
-- **Maintenance & observability** — cap cascade, decay metrics, and export/import for memory stores (Phase 5).
+- **Context Mode** — a dispatch behavior that builds task-ready context automatically: it pulls in the most relevant project artifacts, prior session state, milestone/slice signals, and execution metadata before the model runs. This reduces manual prompt assembly, improves continuity across turns, and helps tasks start with the right files and constraints from the first dispatch. Enabled by default for new projects (opt out with `enabled: false`).
+- **Sandboxed execution tools** — added `gsd_exec_search`, `gsd_resume`, and sandboxed tool-output execution paths for context-mode flows, so search/resume and follow-up execution can run with tighter boundaries and more predictable runtime behavior.
+- **Preflight hardening** — milestone completion now performs stricter clean-root preflight checks and can auto-stash when needed, reducing accidental dirty-tree transitions and helping completion flows fail fast with clearer remediation.
 
-### Progressive Planning (ADR-011)
+### Memory Architecture (ADR-013)
 
-- **Sketch-then-refine planning** — Phase 1 introduces progressive plan elaboration so GSD drafts a lightweight sketch before locking a full plan (#3789).
-- **Mid-execution escalation** — Phase 2 lets tasks escalate complexity mid-run with compensating rollback on write failure (#3789).
+- **Memories table is now authoritative** — all memory reads and writes now flow through the `memories` table as the single source of truth. By removing split legacy paths, memory state stays consistent across agents, tools, and UI surfaces, with fewer reconciliation edge cases and less sync drift.
+- **Structured memory fields** — `structured_fields` adds typed metadata (instead of only free-form text), so memories can carry machine-usable attributes for more accurate retrieval, stronger filtering, and more dependable downstream automation and tooling.
+- **Dual-write migration completed** — the staged migration that wrote to both old and new paths is now fully landed, including decisions backfill and parity wiring across agents, MCP tools, and extract-learnings flows. That gives a safer upgrade path while preserving historical data and reducing cutover risk.
 
-### Workflow & Onboarding
+### Skills, Tooling, and UX
 
-- **Unified workflow plugin system** — new plugin architecture with modes and remote install. Manage via `/gsd workflow list|run|install|info|validate`.
-- **`/gsd onboarding` re-entry** — revisit setup without restarting the TUI; setup hub disambiguation prevents duplicate banners.
-- **`/gsd scan`** — new lightweight command for rapid codebase assessment, writing to `.gsd/codebase/`.
+- **Skill coverage expanded** — 9 gap-closing skills landed and 6 planning/design skills were surfaced, improving end-to-end workflow coverage and making specialized guidance easier to discover at the point of use.
+- **Hook stack upgrades** — Layer 0 shell hooks and additional Layer 2 events were added to widen extension integration points: hooks can act earlier in command execution, and lifecycle consumers now receive richer event signals for orchestration, policy checks, and observability.
+- **TUI polish** — skill invocations now render in a dedicated chat-frame style for clearer scanability, and active-row overflow handling was fixed to prevent terminal layout breakage during long outputs.
 
-### Remote Control & TUI
+### Reliability & Safety
 
-- **Telegram command interface** — control auto-mode remotely via Telegram alongside existing Slack/Discord routes.
-- **Chat, footer, and welcome refresh** — TUI visuals updated; onboarding no longer hangs on re-entry.
-- **New themes** — `tui-classic` and web `classic`/`vivid` palettes added (#4301).
-
-### Models & Providers
-
-- **Claude Opus 4.7** — added across Anthropic, Bedrock, Antigravity, and OpenRouter (#4348).
-- **GPT-5.4-mini** — added to the OpenAI Codex model list (#1215).
-- **Anthropic proxy support** — `ANTHROPIC_BASE_URL` env var honored for custom proxy endpoints (#4140).
-- **Flat-rate provider opt-in** — `allow_flat_rate_providers` routing toggle (#4386).
-- **Ask User Questions** — optional markdown preview panel with side-by-side layout.
-
-### Auto-Mode & Reliability
-
-- **Stuck-loop hardening** — repeated units detected across the stuck window; research-dispatch stuck loop fixed (#4414).
-- **Branch isolation** — milestone branch is created on entry in `isolation: branch` mode with `main_branch` validation (#4389).
-- **Model fallback on limits** — auto-mode limit errors now trigger model fallback (#4373).
-- **Python/Windows verification** — python invocations normalized on Windows in the verification gate (#4416).
-- **Self-healing `.gsd/`** — symlinked `.gsd` staging self-heals to prevent silent data loss (#4423); `.gsd.migrating` healed on resume.
-- **Stale OAuth recovery** — stale Anthropic OAuth credentials self-heal (#4399).
+- **Worktree and dispatch resilience** — crash-recovery dispatch is more robust, path derivation is safer, and worktree context fallback is improved, reducing stuck states and misrouted artifact operations after interruptions.
+- **DB/schema guardrails** — migration/index ordering and schema version stamping were tightened so upgrades apply deterministically and avoid index/version drift across mixed or legacy states.
+- **Security and validation fixes** — multiple hardening fixes landed across redaction paths, file/path checks, and pre-execution validation, closing false-positive/false-negative gaps while improving safety boundaries.
 
 See the full [Changelog](./CHANGELOG.md) for details on every release.
 
