@@ -133,13 +133,18 @@ function readManifest(dir: string): ExtensionManifest | null {
 }
 
 function discoverManifests(): Map<string, ExtensionManifest> {
-  const extDir = getAgentExtensionsDir();
   const manifests = new Map<string, ExtensionManifest>();
-  if (!existsSync(extDir)) return manifests;
-  for (const entry of readdirSync(extDir, { withFileTypes: true })) {
-    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
-    const m = readManifest(join(extDir, entry.name));
-    if (m) manifests.set(m.id, m);
+  // Scan both bundled/agent dir and user-installed dir so CLI (list/info/
+  // enable/disable) sees the same set the loader will merge at runtime.
+  // Bundled entries are scanned first so user-installed IDs override on collision.
+  const dirs = [getAgentExtensionsDir(), getInstalledExtDir()];
+  for (const extDir of dirs) {
+    if (!existsSync(extDir)) continue;
+    for (const entry of readdirSync(extDir, { withFileTypes: true })) {
+      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+      const m = readManifest(join(extDir, entry.name));
+      if (m) manifests.set(m.id, m);
+    }
   }
   return manifests;
 }
@@ -221,16 +226,28 @@ function validateExtensionPackage(pkg: unknown, opts: { extensionId?: string; al
 // ─── Post-install convergence ────────────────────────────────────────────────
 
 /**
- * Post-install convergence: validate package, read manifest, write registry entry.
- * All three install types (npm, git, local) call this after files are in place.
- * Returns the extension ID on success, or null on failure (with error notified).
+ * Allowed characters for an extension id when used as a path segment.
+ * Rejects anything that could enable traversal or escape (slashes, "..", backslashes).
+ */
+const SAFE_EXTENSION_ID_RE = /^[A-Za-z0-9._-]+$/;
+
+function isSafeExtensionId(id: string): boolean {
+  if (!id || id === "." || id === "..") return false;
+  if (id.includes("/") || id.includes("\\") || id.includes("..")) return false;
+  return SAFE_EXTENSION_ID_RE.test(id);
+}
+
+/**
+ * Post-install convergence: validate package and read manifest.
+ * Returns the (validated) extension ID and manifest on success, or null on failure.
+ * Caller is responsible for writing the registry entry *after* the final commit
+ * rename succeeds so a failed move doesn't leave a dangling registry entry.
  */
 function postInstallValidate(
   destPath: string,
   specifier: string,
-  installType: "npm" | "git" | "local",
   ctx: ExtensionCommandContext,
-): string | null {
+): { id: string; manifest: ExtensionManifest } | null {
   // Read package.json
   const pkgJsonPath = join(destPath, "package.json");
   if (!existsSync(pkgJsonPath)) {
@@ -262,12 +279,32 @@ function postInstallValidate(
     return null;
   }
 
-  // Write registry entry with source: "user" and Phase 8 fields.
-  // Wrap in withRegistryLock so concurrent installs serialize rather than
-  // trample each other's entries.
+  // The id from the manifest is used as a path segment under installedExtDir.
+  // Reject unsafe ids before the caller performs any path joins.
+  if (!isSafeExtensionId(extensionId)) {
+    ctx.ui.notify(
+      `Cannot install "${specifier}": extension id "${extensionId}" contains unsafe characters (allowed: alphanumerics, ".", "-", "_").`,
+      "error",
+    );
+    return null;
+  }
+
+  return { id: extensionId, manifest };
+}
+
+/**
+ * Write the registry entry for a freshly-installed extension. Called after the
+ * final destination commit succeeds so a failed rename can't leave a stale entry.
+ */
+function writeInstalledRegistryEntry(
+  id: string,
+  manifest: ExtensionManifest,
+  specifier: string,
+  installType: "npm" | "git" | "local",
+): void {
   withRegistryLock((registry) => {
-    registry.entries[extensionId] = {
-      id: extensionId,
+    registry.entries[id] = {
+      id,
       enabled: true,
       source: "user",
       version: manifest.version,
@@ -275,8 +312,6 @@ function postInstallValidate(
       installType,
     };
   });
-
-  return extensionId;
 }
 
 // ─── Uninstall helpers ───────────────────────────────────────────────────────
@@ -536,7 +571,11 @@ async function handleInstall(specifier: string | undefined, ctx: ExtensionComman
 }
 
 function installFromNpm(specifier: string, installedExtDir: string, ctx: ExtensionCommandContext): void {
+  // packDir holds the tarball in tmpdir(). The *extractDir* is staged inside
+  // installedExtDir so the final renameSync to destPath stays on a single
+  // filesystem (avoids EXDEV when tmpdir() and ~/.gsd live on different mounts).
   const packDir = mkdtempSync(join(tmpdir(), "gsd-install-"));
+  let extractDir: string | null = null;
   try {
     // Step 1: npm pack to tmpdir (D-01, D-05)
     execFileSync("npm", ["pack", specifier, "--pack-destination", packDir, "--ignore-scripts"], {
@@ -548,32 +587,34 @@ function installFromNpm(specifier: string, installedExtDir: string, ctx: Extensi
     const tgzFile = readdirSync(packDir).find(f => f.endsWith(".tgz"));
     if (!tgzFile) throw new Error("npm pack produced no tarball");
 
-    // Step 3: Extract via tar with --strip-components=1 (flat dir, no package/ wrapper)
-    const extractDir = join(packDir, "extracted");
-    mkdirSync(extractDir, { recursive: true });
+    // Step 3: Extract via tar into a staging dir *inside* installedExtDir
+    extractDir = mkdtempSync(join(installedExtDir, "tmp-npm-"));
     execFileSync("tar", ["xzf", join(packDir, tgzFile), "-C", extractDir, "--strip-components=1"], { stdio: "pipe" });
 
     // Step 4: Validate and get extension ID
-    const extensionId = postInstallValidate(extractDir, specifier, "npm", ctx);
-    if (!extensionId) {
+    const validated = postInstallValidate(extractDir, specifier, ctx);
+    if (!validated) {
       return; // Error already notified
     }
 
-    // Step 5: Move to final destination
-    const destPath = join(installedExtDir, extensionId);
+    // Step 5: Move to final destination — same filesystem as extractDir
+    const destPath = join(installedExtDir, validated.id);
     if (existsSync(destPath)) {
       rmSync(destPath, { recursive: true, force: true });
     }
     renameSync(extractDir, destPath);
+    extractDir = null; // Successfully moved; skip cleanup
 
-    // Step 6: Re-read manifest for version display
-    const manifest = readManifest(destPath);
-    const version = manifest?.version ?? "unknown";
-    ctx.ui.notify(`Installed "${extensionId}" v${version}. Restart GSD to activate.`, "info");
+    // Step 6: Commit the registry entry only after the rename succeeds.
+    writeInstalledRegistryEntry(validated.id, validated.manifest, specifier, "npm");
+    ctx.ui.notify(`Installed "${validated.id}" v${validated.manifest.version ?? "unknown"}. Restart GSD to activate.`, "info");
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     ctx.ui.notify(`Failed to install "${specifier}": ${msg}`, "error");
   } finally {
+    if (extractDir && existsSync(extractDir)) {
+      try { rmSync(extractDir, { recursive: true, force: true }); } catch { /* best-effort */ }
+    }
     rmSync(packDir, { recursive: true, force: true });
   }
 }
@@ -590,21 +631,20 @@ function installFromGit(gitUrl: string, installedExtDir: string, ctx: ExtensionC
       rmSync(dotGit, { recursive: true, force: true });
     }
 
-    const extensionId = postInstallValidate(tmpDir, gitUrl, "git", ctx);
-    if (!extensionId) {
+    const validated = postInstallValidate(tmpDir, gitUrl, ctx);
+    if (!validated) {
       rmSync(tmpDir, { recursive: true, force: true });
       return;
     }
 
-    const destPath = join(installedExtDir, extensionId);
+    const destPath = join(installedExtDir, validated.id);
     if (existsSync(destPath)) {
       rmSync(destPath, { recursive: true, force: true });
     }
     renameSync(tmpDir, destPath);
 
-    const manifest = readManifest(destPath);
-    const version = manifest?.version ?? "unknown";
-    ctx.ui.notify(`Installed "${extensionId}" v${version}. Restart GSD to activate.`, "info");
+    writeInstalledRegistryEntry(validated.id, validated.manifest, gitUrl, "git");
+    ctx.ui.notify(`Installed "${validated.id}" v${validated.manifest.version ?? "unknown"}. Restart GSD to activate.`, "info");
   } catch (err) {
     if (existsSync(tmpDir)) rmSync(tmpDir, { recursive: true, force: true });
     const msg = err instanceof Error ? err.message : String(err);
@@ -626,21 +666,20 @@ function installFromLocal(localPath: string, installedExtDir: string, ctx: Exten
   try {
     cpSync(sourcePath, tmpDir, { recursive: true });
 
-    const extensionId = postInstallValidate(tmpDir, localPath, "local", ctx);
-    if (!extensionId) {
+    const validated = postInstallValidate(tmpDir, localPath, ctx);
+    if (!validated) {
       rmSync(tmpDir, { recursive: true, force: true });
       return;
     }
 
-    const destPath = join(installedExtDir, extensionId);
+    const destPath = join(installedExtDir, validated.id);
     if (existsSync(destPath)) {
       rmSync(destPath, { recursive: true, force: true });
     }
     renameSync(tmpDir, destPath);
 
-    const manifest = readManifest(destPath);
-    const version = manifest?.version ?? "unknown";
-    ctx.ui.notify(`Installed "${extensionId}" v${version}. Restart GSD to activate.`, "info");
+    writeInstalledRegistryEntry(validated.id, validated.manifest, localPath, "local");
+    ctx.ui.notify(`Installed "${validated.id}" v${validated.manifest.version ?? "unknown"}. Restart GSD to activate.`, "info");
   } catch (err) {
     if (existsSync(tmpDir)) rmSync(tmpDir, { recursive: true, force: true });
     const msg = err instanceof Error ? err.message : String(err);

@@ -4,7 +4,7 @@
 import test, { describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, basename, dirname } from 'node:path'
 import { tmpdir } from 'node:os'
 import { sortExtensionPaths } from '../extension-sort.ts'
 
@@ -45,10 +45,7 @@ describe('sortExtensionPaths', () => {
     assert.equal(result.warnings.length, 0, 'no warnings expected')
     assert.equal(result.sortedPaths.length, 3)
     // A before B before C
-    const ids = result.sortedPaths.map(p => {
-      const parts = p.split('/')
-      return parts[parts.length - 2]
-    })
+    const ids = result.sortedPaths.map(p => basename(dirname(p)))
     assert.deepEqual(ids, ['test.a', 'test.b', 'test.c'])
   })
 

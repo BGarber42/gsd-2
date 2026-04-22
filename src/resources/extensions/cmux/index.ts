@@ -458,8 +458,8 @@ function extractSurfaceIds(value: unknown): string[] {
 export function initCmuxEventListeners(events: EventBus): void {
   events.on(CMUX_CHANNELS.SIDEBAR, (data) => {
     const event = data as CmuxSidebarEvent;
-    if (event.action === "sync" && event.preferences && event.state) {
-      syncCmuxSidebar(event.preferences as CmuxPreferences, event.state as CmuxState);
+    if (event.action === "sync" && event.state) {
+      syncCmuxSidebar(event.preferences as CmuxPreferences | undefined, event.state as CmuxState);
     }
     if (event.action === "clear") {
       clearCmuxSidebar(event.preferences as CmuxPreferences | undefined);

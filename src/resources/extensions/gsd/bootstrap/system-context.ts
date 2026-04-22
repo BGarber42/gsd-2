@@ -98,16 +98,20 @@ export async function buildBeforeAgentStartResult(
     shortcutShell: formatShortcut("Ctrl+Alt+B"),
   });
   let loadedPreferences = loadEffectiveGSDPreferences();
-  const { markCmuxPromptShown, shouldPromptToEnableCmux } = await import("../../cmux/index.js");
-  if (shouldPromptToEnableCmux(loadedPreferences?.preferences)) {
-    markCmuxPromptShown();
-    if (autoEnableCmuxPreferences()) {
-      loadedPreferences = loadEffectiveGSDPreferences();
-      ctx.ui.notify(
-        "cmux detected — auto-enabled. Run /gsd cmux off to disable.",
-        "info",
-      );
+  try {
+    const { markCmuxPromptShown, shouldPromptToEnableCmux } = await import("../../cmux/index.js");
+    if (shouldPromptToEnableCmux(loadedPreferences?.preferences)) {
+      markCmuxPromptShown();
+      if (autoEnableCmuxPreferences()) {
+        loadedPreferences = loadEffectiveGSDPreferences();
+        ctx.ui.notify(
+          "cmux detected — auto-enabled. Run /gsd cmux off to disable.",
+          "info",
+        );
+      }
     }
+  } catch (e) {
+    logWarning("bootstrap", `cmux prompt setup skipped: ${(e as Error).message}`);
   }
 
   let preferenceBlock = "";

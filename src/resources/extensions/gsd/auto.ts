@@ -1212,7 +1212,7 @@ function buildLoopDeps(pi: ExtensionAPI): LoopDeps {
     updateProgressWidget,
     ...cmux,
     handleLostSessionLock: (ctx: ExtensionContext | undefined, lockStatus: SessionLockStatus | undefined) => {
-      cmux.clearCmuxSidebar(loadEffectiveGSDPreferences()?.preferences);
+      cmux.clearCmuxSidebar(loadEffectiveGSDPreferences(s.basePath || undefined)?.preferences);
       handleLostSessionLock(ctx, lockStatus);
     },
 

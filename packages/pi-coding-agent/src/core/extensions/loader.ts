@@ -849,24 +849,21 @@ export async function loadExtensionFromFactory(
 /**
  * Load extensions from paths.
  *
- * Extensions are loaded in parallel to reduce wall-clock time (~30-50% faster
- * than sequential loading for I/O-bound jiti compilation).
+ * Paths are expected to be topologically sorted by caller (see sortExtensionPaths).
+ * Factories are awaited sequentially so a dependency's factory fully initializes
+ * (registers tools, commands, hooks on `pi`) before any dependent's factory runs.
  */
 export async function loadExtensions(paths: string[], cwd: string, eventBus?: EventBus): Promise<LoadExtensionsResult> {
 	const resolvedEventBus = eventBus ?? createEventBus();
 	const runtime = createExtensionRuntime();
 
-	const results = await Promise.all(
-		paths.map((extPath) => loadExtension(extPath, cwd, resolvedEventBus, runtime)),
-	);
-
 	const extensions: Extension[] = [];
 	const errors: Array<{ path: string; error: string }> = [];
 
-	for (let i = 0; i < results.length; i++) {
-		const { extension, error } = results[i];
+	for (const extPath of paths) {
+		const { extension, error } = await loadExtension(extPath, cwd, resolvedEventBus, runtime);
 		if (error) {
-			errors.push({ path: paths[i], error });
+			errors.push({ path: extPath, error });
 		} else if (extension) {
 			extensions.push(extension);
 		}
