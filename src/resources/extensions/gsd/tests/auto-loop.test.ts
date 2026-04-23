@@ -10,6 +10,7 @@ import {
   autoLoop,
   detectStuck,
   _resetPendingResolve,
+  _hasPendingResolveForTest,
   _setActiveSession,
   isSessionSwitchInFlight,
   type UnitResult,
@@ -379,6 +380,7 @@ test("runUnit cancels before dispatch when provider is not request-ready (#4555)
     /Provider anthropic is not request-ready/,
   );
   assert.equal(pi.calls.length, 0, "sendMessage must not be called when provider is not ready");
+  assert.equal(_hasPendingResolveForTest(), false, "provider cancellation must clear the pending resolver");
 });
 
 test("runUnit cancels before dispatch using currentUnitModel provider when set (#4555)", async () => {
