@@ -1671,22 +1671,42 @@ export function mergeMilestoneToMain(
   const milestonesDir = join(gsdRoot(originalBasePath_), "milestones");
   const shelterDir = join(gsdRoot(originalBasePath_), ".milestone-shelter");
   const shelteredDirs: string[] = [];
+  let shelterRestored = false;
 
   // Helper: restore sheltered milestone directories (#2505).
   // Called on both success and error paths to ensure queued CONTEXT files
-  // are never permanently lost.
+  // are never permanently lost. Idempotent — the error path may fire after
+  // the success path has already restored and removed the shelter dir; a
+  // second call is a no-op instead of logging a misleading "shelter restore
+  // failed: ENOENT" error for shelter sources that were cleaned up legitimately.
   const restoreShelter = (): void => {
+    if (shelterRestored) return;
+    shelterRestored = true;
     if (shelteredDirs.length === 0) return;
     for (const dirName of shelteredDirs) {
+      const src = join(shelterDir, dirName);
+      // If the shelter source is missing the restore cannot proceed for this
+      // entry. Distinguish "legitimately missing" (shelter dir removed by a
+      // prior successful restore or never copied) from a surprising ENOENT
+      // inside an otherwise-populated shelter.
+      if (!existsSync(src)) {
+        logWarning(
+          "worktree",
+          `shelter source missing for ${dirName}; skipping restore (shelter already cleaned or entry never staged)`,
+        );
+        continue;
+      }
       try {
         mkdirSync(milestonesDir, { recursive: true });
-        cpSync(join(shelterDir, dirName), join(milestonesDir, dirName), { recursive: true, force: true });
+        cpSync(src, join(milestonesDir, dirName), { recursive: true, force: true });
       } catch (err) { /* best-effort */
         logError("worktree", `shelter restore failed: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
-    try { rmSync(shelterDir, { recursive: true, force: true }); } catch (err) { /* best-effort */
-      logWarning("worktree", `shelter cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
+    if (existsSync(shelterDir)) {
+      try { rmSync(shelterDir, { recursive: true, force: true }); } catch (err) { /* best-effort */
+        logWarning("worktree", `shelter cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   };
 
