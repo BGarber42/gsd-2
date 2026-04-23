@@ -761,15 +761,18 @@ describe("stream-adapter — session persistence (#2859)", () => {
 			assert.equal(srv.env.GSD_CLI_PATH, "/tmp/gsd");
 			assert.equal(srv.env.GSD_PERSIST_WRITE_GATE_STATE, "1");
 			assert.equal(srv.env.GSD_WORKFLOW_PROJECT_ROOT, "/tmp/project");
-			assert.deepEqual(options.disallowedTools, ["AskUserQuestion"]);
+			assert.deepEqual(options.disallowedTools, []);
 			assert.deepEqual(options.allowedTools, [
 				"Read",
 				"Write",
 				"Edit",
 				"Glob",
 				"Grep",
-				"Bash(ls:*)",
-				"Bash(pwd)",
+				"Bash",
+				"Agent",
+				"WebFetch",
+				"WebSearch",
+				"AskUserQuestion",
 				"mcp__gsd-workflow__*",
 			]);
 		} finally {
@@ -781,7 +784,7 @@ describe("stream-adapter — session persistence (#2859)", () => {
 		}
 	});
 
-	test("buildSdkOptions disables AskUserQuestion for custom workflow MCP server names", () => {
+	test("buildSdkOptions auto-approves every tool for custom workflow MCP server names", () => {
 		const prev = {
 			GSD_WORKFLOW_MCP_COMMAND: process.env.GSD_WORKFLOW_MCP_COMMAND,
 			GSD_WORKFLOW_MCP_NAME: process.env.GSD_WORKFLOW_MCP_NAME,
@@ -799,15 +802,18 @@ describe("stream-adapter — session persistence (#2859)", () => {
 			const options = buildSdkOptions("claude-sonnet-4-20250514", "test");
 			const mcpServers = options.mcpServers as Record<string, any>;
 			assert.ok(mcpServers?.["custom-workflow"], "expected custom workflow server config");
-			assert.deepEqual(options.disallowedTools, ["AskUserQuestion"]);
+			assert.deepEqual(options.disallowedTools, []);
 			assert.deepEqual(options.allowedTools, [
 				"Read",
 				"Write",
 				"Edit",
 				"Glob",
 				"Grep",
-				"Bash(ls:*)",
-				"Bash(pwd)",
+				"Bash",
+				"Agent",
+				"WebFetch",
+				"WebSearch",
+				"AskUserQuestion",
 				"mcp__custom-workflow__*",
 			]);
 		} finally {
@@ -845,9 +851,9 @@ describe("stream-adapter — session persistence (#2859)", () => {
 			const mcpServers = (options as any).mcpServers;
 			if (mcpServers) {
 				assert.ok(mcpServers["gsd-workflow"], "if present, must be gsd-workflow");
-				assert.deepEqual((options as any).disallowedTools, ["AskUserQuestion"]);
+				assert.deepEqual((options as any).disallowedTools, []);
 			} else {
-				assert.deepEqual((options as any).disallowedTools, ["AskUserQuestion"]);
+				assert.deepEqual((options as any).disallowedTools, []);
 			}
 			rmSync(emptyDir, { recursive: true, force: true });
 		} finally {
@@ -894,7 +900,7 @@ describe("stream-adapter — session persistence (#2859)", () => {
 			assert.equal(srv.env.GSD_CLI_PATH, "/tmp/gsd");
 			assert.equal(srv.env.GSD_PERSIST_WRITE_GATE_STATE, "1");
 			assert.equal(srv.env.GSD_WORKFLOW_PROJECT_ROOT, resolvedRepoDir);
-			assert.deepEqual(options.disallowedTools, ["AskUserQuestion"]);
+			assert.deepEqual(options.disallowedTools, []);
 		} finally {
 			process.chdir(originalCwd);
 			rmSync(repoDir, { recursive: true, force: true });
@@ -1282,14 +1288,14 @@ describe("stream-adapter — permission mode (F10)", () => {
 		}
 	}
 
-	test("buildSdkOptions defaults to acceptEdits (#4383)", () => {
+	test("buildSdkOptions defaults to bypassPermissions (globally unblocks all tools)", () => {
 		clearWorkflowMcpEnv();
 		const opts = buildSdkOptions("claude-sonnet-4-6", "test");
-		assert.equal(opts.permissionMode, "acceptEdits");
+		assert.equal(opts.permissionMode, "bypassPermissions");
 		assert.equal(
 			opts.allowDangerouslySkipPermissions,
-			false,
-			"allowDangerouslySkipPermissions must be false when permissionMode is acceptEdits",
+			true,
+			"allowDangerouslySkipPermissions must be true when permissionMode is bypassPermissions",
 		);
 	});
 
@@ -1304,9 +1310,9 @@ describe("stream-adapter — permission mode (F10)", () => {
 		);
 	});
 
-	test("resolveClaudePermissionMode defaults to acceptEdits when no env var is set (#4383)", async () => {
+	test("resolveClaudePermissionMode defaults to bypassPermissions when no env var is set (globally unblocks all tools)", async () => {
 		const mode = await resolveClaudePermissionMode({});
-		assert.equal(mode, "acceptEdits");
+		assert.equal(mode, "bypassPermissions");
 	});
 
 	test("resolveClaudePermissionMode honours the GSD_CLAUDE_CODE_PERMISSION_MODE env override", async () => {

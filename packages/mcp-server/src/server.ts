@@ -13,6 +13,7 @@
 
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { spawn } from 'node:child_process';
 import { z } from 'zod';
 import type { SessionManager } from './session-manager.js';
 import { isRemoteConfigured, tryRemoteQuestions } from './remote-questions.js';
@@ -37,6 +38,31 @@ const SERVER_VERSION = '2.53.0';
 
 /** User-interaction timeout — generous but bounded so elicitation can't hang indefinitely (#4586). */
 const ELICIT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * Default child-process runner used by secure_env_collect to push secrets
+ * into `vercel env add` / `npx convex env set`. Previously `applySecrets`
+ * was called without an `execFn`, so vercel/convex destinations silently
+ * dropped every collected key. This restores the write path.
+ */
+function defaultExecFn(
+  cmd: string,
+  args: string[],
+): Promise<{ code: number; stderr: string }> {
+  return new Promise((res) => {
+    // stdin: ignore — avoids hanging if the child ever prompts interactively.
+    // stdout: ignore — consumer only cares about stderr + exit code, and an
+    //   un-drained pipe deadlocks once the kernel buffer (~64KB) fills.
+    // stderr: pipe — captured below for error surfacing.
+    const child = spawn(cmd, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderr = '';
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString('utf8');
+    });
+    child.on('error', (err) => res({ code: 1, stderr: err.message }));
+    child.on('close', (code) => res({ code: code ?? 1, stderr }));
+  });
+}
 
 /**
  * Race a promise against a timeout. Rejects with a typed error on timeout so
@@ -736,6 +762,7 @@ export async function createMcpServer(sessionManager: SessionManager): Promise<{
         const { applied, errors } = await applySecrets(provided, resolvedDestination, {
           envFilePath: resolvedEnvPath,
           environment,
+          execFn: defaultExecFn,
         });
 
         // (7) Build result — NEVER include secret values
