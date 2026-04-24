@@ -9,8 +9,8 @@
  */
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
-import assert from 'node:assert';
-import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import assert from 'node:assert/strict';
+import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -33,11 +33,7 @@ function setupTestDir(): string {
 }
 
 function cleanupTestDir(dir: string): void {
-	try {
-		rmSync(dir, { recursive: true, force: true });
-	} catch {
-		// ignore cleanup errors
-	}
+	rmSync(dir, { recursive: true, force: true });
 }
 
 // ============================================================================
@@ -173,6 +169,24 @@ spec:
 		const result = loadComponentFromDir(dir, 'user');
 		assert.strictEqual(result.component, null);
 		assert.ok(result.diagnostics.some(d => d.type === 'error'));
+	});
+
+	it('rejects unsupported component kinds in this slice', () => {
+		const dir = join(testDir, 'workflow');
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, 'component.yaml'), `
+apiVersion: gsd/v1
+kind: pipeline
+metadata:
+  name: workflow
+  description: "Not supported by this PR"
+spec:
+  steps: []
+`, 'utf-8');
+
+		const result = loadComponentFromDir(dir, 'user');
+		assert.strictEqual(result.component, null);
+		assert.ok(result.diagnostics.some(d => d.message.includes('unsupported kind')));
 	});
 });
 

@@ -1,23 +1,21 @@
 /**
  * Unified Component Type Definitions
  *
- * Single abstraction for all installable/discoverable units in GSD:
- * skills, agents, pipelines, and agent-teams.
+ * Shared metadata for installable/discoverable skills and agents.
  *
  * Replaces the separate type systems in:
  * - packages/pi-coding-agent/src/core/skills.ts (SkillFrontmatter, Skill)
  * - src/resources/extensions/subagent/agents.ts (AgentConfig)
- * - src/resources/extensions/gsd/namespaced-registry.ts (NamespacedComponent)
  *
- * All three legacy formats are supported via backward-compatible loading.
+ * Legacy skill and agent formats are supported via backward-compatible loading.
  */
 
 // ============================================================================
 // Component Kind
 // ============================================================================
 
-/** All supported component types */
-export type ComponentKind = 'skill' | 'agent' | 'pipeline' | 'agent-team';
+/** All supported component types for the first component-system slice. */
+export type ComponentKind = 'skill' | 'agent';
 
 /** API version for component.yaml spec */
 export type ComponentApiVersion = 'gsd/v1';
@@ -147,93 +145,6 @@ export interface AgentSpec {
 }
 
 // ============================================================================
-// Pipeline Spec
-// ============================================================================
-
-export interface PipelineInput {
-	type: 'string' | 'number' | 'boolean';
-	default?: string | number | boolean;
-	description?: string;
-}
-
-export interface PipelineStep {
-	/** Unique step identifier. */
-	id: string;
-
-	/** Component to invoke (skill or agent name). */
-	component: string;
-
-	/** Task description, supports {variable} interpolation. */
-	task: string;
-
-	/** Output variable name for downstream steps. */
-	output?: string;
-
-	/** Whether this step can run in parallel with others. */
-	parallel?: boolean;
-
-	/** Step IDs this step depends on (overrides parallel). */
-	dependsOn?: string[];
-}
-
-export interface PipelineSpec {
-	/** Input parameters for the pipeline. */
-	inputs?: Record<string, PipelineInput>;
-
-	/** Ordered list of pipeline steps. */
-	steps: PipelineStep[];
-
-	/** Output mapping. */
-	outputs?: Record<string, string>;
-}
-
-// ============================================================================
-// Agent Team Spec
-// ============================================================================
-
-export interface AgentTeamMember {
-	/** Agent component to use. */
-	agent: string;
-
-	/** Role label for this team member. */
-	role: string;
-
-	/** Task description, supports {variable} interpolation. */
-	task: string;
-
-	/** Output variable name. */
-	output?: string;
-
-	/** Whether this member can work in parallel. */
-	parallel?: boolean;
-
-	/** Member roles this member depends on. */
-	dependsOn?: string[];
-}
-
-export interface AgentTeamCoordination {
-	/** Maximum parallel agents. */
-	maxParallel?: number;
-
-	/** Team-level timeout in minutes. */
-	timeoutMinutes?: number;
-
-	/** Budget ceiling for the entire team execution. */
-	budgetCeiling?: number;
-
-	/** Behavior on member failure. */
-	onFailure?: 'continue' | 'stop' | 'retry';
-}
-
-export interface AgentTeamSpec {
-	/** Team members. */
-	members: AgentTeamMember[];
-
-	/** Coordination configuration. */
-	coordination?: AgentTeamCoordination;
-}
-
-// ============================================================================
 // Dependency & Compatibility
 // ============================================================================
 
@@ -268,6 +179,8 @@ export interface AgentRoutingRule {
 	confidence?: 'low' | 'medium' | 'high';
 }
 
+export type ComponentSpec = SkillSpec | AgentSpec;
+
 // ============================================================================
 // Full Component Definition
 // ============================================================================
@@ -280,7 +193,7 @@ export interface ComponentDefinition {
 	apiVersion: ComponentApiVersion;
 	kind: ComponentKind;
 	metadata: ComponentMetadata;
-	spec: SkillSpec | AgentSpec | PipelineSpec | AgentTeamSpec;
+	spec: ComponentSpec;
 
 	/** Dependencies on other components. */
 	requires?: ComponentDependencies;
@@ -314,7 +227,7 @@ export interface Component {
 	metadata: ComponentMetadata;
 
 	/** Kind-specific specification. */
-	spec: SkillSpec | AgentSpec | PipelineSpec | AgentTeamSpec;
+	spec: ComponentSpec;
 
 	/** Dependencies. */
 	requires?: ComponentDependencies;

@@ -11,7 +11,7 @@
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { parseFrontmatter } from '@gsd/pi-coding-agent';
 import type {
@@ -30,6 +30,8 @@ import {
 	validateComponentDescription,
 	computeComponentId,
 } from './component-types.js';
+
+const SUPPORTED_COMPONENT_KINDS: ComponentKind[] = ['skill', 'agent'];
 
 // ============================================================================
 // Load Result
@@ -122,6 +124,15 @@ function loadFromComponentYaml(
 
 	if (!definition.kind) {
 		diagnostics.push({ type: 'error', message: 'missing kind', path: yamlPath });
+		return { component: null, diagnostics };
+	}
+
+	if (!SUPPORTED_COMPONENT_KINDS.includes(definition.kind)) {
+		diagnostics.push({
+			type: 'error',
+			message: `unsupported kind "${definition.kind}"`,
+			path: yamlPath,
+		});
 		return { component: null, diagnostics };
 	}
 
@@ -271,7 +282,7 @@ function loadFromLegacyAgent(
 		return { component: null, diagnostics };
 	}
 
-	const { frontmatter, body } = parseFrontmatter<LegacyAgentFrontmatter>(raw);
+	const { frontmatter } = parseFrontmatter<LegacyAgentFrontmatter>(raw);
 
 	if (!frontmatter.name || !frontmatter.description) {
 		diagnostics.push({
