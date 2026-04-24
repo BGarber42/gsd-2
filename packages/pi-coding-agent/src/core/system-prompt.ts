@@ -35,6 +35,18 @@ export interface BuildSystemPromptOptions {
 	contextFiles?: Array<{ path: string; content: string }>;
 	/** Pre-loaded skills. */
 	skills?: Skill[];
+	/**
+	 * Optional predicate applied to the `skills` list before rendering the
+	 * <available_skills> catalog. Returning `false` omits a skill from the
+	 * prompt (the skill remains loaded and invocable by name — only the
+	 * catalog listing is suppressed).
+	 *
+	 * Intended for consumers that can narrow the relevant skill surface
+	 * (e.g. per-unit-type manifests) to reduce cached system-prompt bloat.
+	 * When omitted, all non-`disableModelInvocation` skills render — i.e.
+	 * behavior is unchanged from before this option existed.
+	 */
+	skillFilter?: (skill: Skill) => boolean;
 }
 
 /** Build the system prompt with tools, guidelines, and context */
@@ -48,6 +60,7 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions = {}): strin
 		cwd,
 		contextFiles: providedContextFiles,
 		skills: providedSkills,
+		skillFilter,
 	} = options;
 	const resolvedCwd = toPosixPath(cwd ?? process.cwd());
 
@@ -66,7 +79,8 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions = {}): strin
 	const appendSection = appendSystemPrompt ? `\n\n${appendSystemPrompt}` : "";
 
 	const contextFiles = providedContextFiles ?? [];
-	const skills = providedSkills ?? [];
+	const skillsBase = providedSkills ?? [];
+	const skills = skillFilter ? skillsBase.filter(skillFilter) : skillsBase;
 
 	if (customPrompt) {
 		let prompt = customPrompt;
