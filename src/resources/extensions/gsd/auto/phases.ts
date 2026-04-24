@@ -51,7 +51,7 @@ import { getEligibleSlices } from "../slice-parallel-eligibility.js";
 import { startSliceParallel } from "../slice-parallel-orchestrator.js";
 import { isDbAvailable, getMilestoneSlices } from "../gsd-db.js";
 import type { MinimalModelRegistry } from "../context-budget.js";
-import { ensurePlanV2Graph } from "../uok/plan-v2.js";
+import { ensurePlanV2Graph, isMissingFinalizedContextResult } from "../uok/plan-v2.js";
 import { resolveUokFlags } from "../uok/flags.js";
 import { UokGateRunner } from "../uok/gate-runner.js";
 import { resetEvidence, loadEvidenceFromDisk } from "../safety/evidence-collector.js";
@@ -420,27 +420,41 @@ export async function runPreDispatch(
     const compiled = ensurePlanV2Graph(s.basePath, state);
     if (!compiled.ok) {
       const reason = compiled.reason ?? "Plan v2 compilation failed";
+      if (isMissingFinalizedContextResult(compiled)) {
+        await runPreDispatchGate({
+          gateId: "plan-v2-gate",
+          gateType: "policy",
+          outcome: "pass",
+          failureClass: "none",
+          rationale: "plan v2 missing context recovery deferred to dispatch",
+          findings: reason,
+          milestoneId: state.activeMilestone?.id ?? undefined,
+        });
+      } else {
+        await runPreDispatchGate({
+          gateId: "plan-v2-gate",
+          gateType: "policy",
+          outcome: "manual-attention",
+          failureClass: "manual-attention",
+          rationale: "plan v2 compile gate failed",
+          findings: reason,
+          milestoneId: state.activeMilestone?.id ?? undefined,
+        });
+        ctx.ui.notify(`Plan gate failed-closed: ${reason}\n\nIf this keeps happening, try: /gsd doctor heal`, "error");
+        await deps.pauseAuto(ctx, pi);
+        return { action: "break", reason: "plan-v2-gate-failed" };
+      }
+    }
+    if (compiled.ok) {
       await runPreDispatchGate({
         gateId: "plan-v2-gate",
         gateType: "policy",
-        outcome: "manual-attention",
-        failureClass: "manual-attention",
-        rationale: "plan v2 compile gate failed",
-        findings: reason,
+        outcome: "pass",
+        failureClass: "none",
+        rationale: "plan v2 compile gate passed",
         milestoneId: state.activeMilestone?.id ?? undefined,
       });
-      ctx.ui.notify(`Plan gate failed-closed: ${reason}\n\nIf this keeps happening, try: /gsd doctor heal`, "error");
-      await deps.pauseAuto(ctx, pi);
-      return { action: "break", reason: "plan-v2-gate-failed" };
     }
-    await runPreDispatchGate({
-      gateId: "plan-v2-gate",
-      gateType: "policy",
-      outcome: "pass",
-      failureClass: "none",
-      rationale: "plan v2 compile gate passed",
-      milestoneId: state.activeMilestone?.id ?? undefined,
-    });
   }
   deps.syncCmuxSidebar(prefs, state);
   let mid = state.activeMilestone?.id;

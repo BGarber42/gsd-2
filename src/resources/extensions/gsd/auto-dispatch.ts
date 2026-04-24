@@ -59,6 +59,7 @@ import {
 import { resolveModelWithFallbacksForUnit } from "./preferences-models.js";
 import { resolveUokFlags } from "./uok/flags.js";
 import { selectReactiveDispatchBatch } from "./uok/execution-graph.js";
+import { EXECUTION_ENTRY_PHASES, hasFinalizedMilestoneContext } from "./uok/plan-v2.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -239,6 +240,38 @@ export const DISPATCH_RULES: DispatchRule[] = [
           state.activeSlice,
           basePath,
           pendingOverrides,
+        ),
+      };
+    },
+  },
+  {
+    // #4671 — Recovery path for execution-entry phases with missing CONTEXT.md.
+    //
+    // Once `deriveStateFromDb` returns an execution-entry phase (executing /
+    // summarizing / validating-milestone / completing-milestone), the
+    // pre-planning guard at `pre-planning (no context) → discuss-milestone`
+    // no longer fires. The plan-v2 gate correctly detects the missing context
+    // but can only block — it cannot redispatch. Without this rule the
+    // milestone is stuck until `/gsd doctor heal` repairs it (and heal
+    // historically missed this check too).
+    //
+    // Fire BEFORE the execution-entry phase rules so we redispatch to
+    // `discuss-milestone` instead of hitting the plan-v2 gate.
+    name: "execution-entry phase (no context) → discuss-milestone",
+    match: async ({ state, mid, midTitle, basePath, structuredQuestionsAvailable }) => {
+      if (!EXECUTION_ENTRY_PHASES.has(state.phase)) return null;
+      // Align with the plan-v2 gate's lookup semantics: whitespace-only counts
+      // as missing, and an auto worktree may fall back to GSD_PROJECT_ROOT.
+      if (hasFinalizedMilestoneContext(basePath, mid)) return null;
+      return {
+        action: "dispatch",
+        unitType: "discuss-milestone",
+        unitId: mid,
+        prompt: await buildDiscussMilestonePrompt(
+          mid,
+          midTitle,
+          basePath,
+          structuredQuestionsAvailable,
         ),
       };
     },
