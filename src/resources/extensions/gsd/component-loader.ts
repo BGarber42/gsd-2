@@ -32,6 +32,7 @@ import {
 } from './component-types.js';
 
 const SUPPORTED_COMPONENT_KINDS: ComponentKind[] = ['skill', 'agent'];
+const SUPPORTED_API_VERSIONS: ComponentApiVersion[] = ['gsd/v1'];
 
 // ============================================================================
 // Load Result
@@ -122,6 +123,15 @@ function loadFromComponentYaml(
 		return { component: null, diagnostics };
 	}
 
+	if (!SUPPORTED_API_VERSIONS.includes(definition.apiVersion)) {
+		diagnostics.push({
+			type: 'error',
+			message: `unsupported apiVersion "${String(definition.apiVersion)}"`,
+			path: yamlPath,
+		});
+		return { component: null, diagnostics };
+	}
+
 	if (!definition.kind) {
 		diagnostics.push({ type: 'error', message: 'missing kind', path: yamlPath });
 		return { component: null, diagnostics };
@@ -146,21 +156,29 @@ function loadFromComponentYaml(
 		return { component: null, diagnostics };
 	}
 
-	// Validate name
 	const nameErrors = validateComponentName(definition.metadata.name);
 	for (const err of nameErrors) {
-		diagnostics.push({ type: 'warning', message: err, path: yamlPath });
+		diagnostics.push({ type: 'error', message: err, path: yamlPath });
 	}
 
-	// Validate description
 	const descErrors = validateComponentDescription(definition.metadata.description);
 	for (const err of descErrors) {
-		diagnostics.push({ type: 'warning', message: err, path: yamlPath });
+		diagnostics.push({ type: 'error', message: err, path: yamlPath });
+	}
+
+	if (nameErrors.length > 0 || descErrors.length > 0) {
+		return { component: null, diagnostics };
 	}
 
 	// Validate kind-specific spec
 	if (!definition.spec) {
 		diagnostics.push({ type: 'error', message: 'missing spec', path: yamlPath });
+		return { component: null, diagnostics };
+	}
+
+	const entryFileDiagnostic = validateEntryFile(definition.kind, definition.spec, dir, yamlPath);
+	if (entryFileDiagnostic) {
+		diagnostics.push(entryFileDiagnostic);
 		return { component: null, diagnostics };
 	}
 
@@ -427,21 +445,36 @@ export function scanAgentDir(
 	}
 
 	for (const entry of entries) {
-		if (!entry.name.endsWith('.md')) continue;
-		if (!entry.isFile() && !entry.isSymbolicLink()) continue;
-
 		const fullPath = join(dir, entry.name);
+		let isDir = entry.isDirectory();
+		let isFile = entry.isFile();
+		if (entry.isSymbolicLink()) {
+			try {
+				const stats = statSync(fullPath);
+				isDir = stats.isDirectory();
+				isFile = stats.isFile();
+			} catch {
+				continue;
+			}
+		}
+
+		if (isDir) {
+			const result = loadComponentFromDir(fullPath, source);
+			if (result.component?.kind === 'agent') {
+				components.push(result.component);
+			}
+			diagnostics.push(...result.diagnostics);
+			continue;
+		}
+
+		if (!entry.name.endsWith('.md')) continue;
+		if (!isFile) continue;
 
 		// Check if there's a component.yaml in a same-named directory
 		const nameWithoutExt = entry.name.replace(/\.md$/, '');
 		const componentDir = join(dir, nameWithoutExt);
 		if (existsSync(join(componentDir, 'component.yaml'))) {
-			// New format takes precedence — skip the .md file
-			const result = loadComponentFromDir(componentDir, source);
-			if (result.component) {
-				components.push(result.component);
-			}
-			diagnostics.push(...result.diagnostics);
+			// New format takes precedence and is loaded by the directory branch.
 			continue;
 		}
 
@@ -513,4 +546,53 @@ function loadFromFile(
 	};
 
 	return { component, diagnostics };
+}
+
+function validateEntryFile(
+	kind: ComponentKind,
+	spec: ComponentDefinition['spec'],
+	dir: string,
+	yamlPath: string,
+): ComponentDiagnostic | null {
+	const relativePath =
+		kind === 'skill'
+			? (spec as SkillSpec).prompt
+			: (spec as AgentSpec).systemPrompt;
+	const field = kind === 'skill' ? 'spec.prompt' : 'spec.systemPrompt';
+
+	if (!relativePath || typeof relativePath !== 'string') {
+		return {
+			type: 'error',
+			message: `missing ${field}`,
+			path: yamlPath,
+		};
+	}
+
+	const entryPath = join(dir, relativePath);
+	if (!existsSync(entryPath)) {
+		return {
+			type: 'error',
+			message: `missing referenced file for ${field}: ${relativePath}`,
+			path: entryPath,
+		};
+	}
+
+	try {
+		if (!statSync(entryPath).isFile()) {
+			return {
+				type: 'error',
+				message: `referenced ${field} is not a file: ${relativePath}`,
+				path: entryPath,
+			};
+		}
+	} catch (error) {
+		const msg = error instanceof Error ? error.message : 'failed to inspect referenced file';
+		return {
+			type: 'error',
+			message: `${msg}: ${relativePath}`,
+			path: entryPath,
+		};
+	}
+
+	return null;
 }

@@ -94,6 +94,7 @@ spec:
   maxTurns: 20
   timeoutMinutes: 5
 `, 'utf-8');
+		writeFileSync(join(agentDir, 'AGENT.md'), 'You are a test agent.', 'utf-8');
 
 		const result = loadComponentFromDir(agentDir, 'project');
 		assert.ok(result.component);
@@ -121,6 +122,7 @@ metadata:
 spec:
   prompt: SKILL.md
 `, 'utf-8');
+		writeFileSync(join(dir, 'SKILL.md'), 'Review code.', 'utf-8');
 
 		const result = loadComponentFromDir(dir, 'user');
 		assert.ok(result.component);
@@ -145,6 +147,25 @@ spec:
 		assert.ok(result.diagnostics.some(d => d.message.includes('apiVersion')));
 	});
 
+	it('returns error for unsupported apiVersion', () => {
+		const dir = join(testDir, 'bad-version');
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, 'component.yaml'), `
+apiVersion: gsd/v2
+kind: skill
+metadata:
+  name: bad-version
+  description: "Unsupported apiVersion"
+spec:
+  prompt: SKILL.md
+`, 'utf-8');
+		writeFileSync(join(dir, 'SKILL.md'), 'Content.', 'utf-8');
+
+		const result = loadComponentFromDir(dir, 'user');
+		assert.strictEqual(result.component, null);
+		assert.ok(result.diagnostics.some(d => d.type === 'error' && d.message.includes('unsupported apiVersion')));
+	});
+
 	it('returns error for missing metadata.name', () => {
 		const dir = join(testDir, 'no-name');
 		mkdirSync(dir, { recursive: true });
@@ -161,6 +182,25 @@ spec:
 		assert.strictEqual(result.component, null);
 	});
 
+	it('returns error for invalid component.yaml metadata', () => {
+		const dir = join(testDir, 'bad-metadata');
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, 'component.yaml'), `
+apiVersion: gsd/v1
+kind: skill
+metadata:
+  name: BadName
+  description: "Invalid uppercase name"
+spec:
+  prompt: SKILL.md
+`, 'utf-8');
+		writeFileSync(join(dir, 'SKILL.md'), 'Content.', 'utf-8');
+
+		const result = loadComponentFromDir(dir, 'user');
+		assert.strictEqual(result.component, null);
+		assert.ok(result.diagnostics.some(d => d.type === 'error' && d.message.includes('lowercase')));
+	});
+
 	it('returns error for invalid YAML', () => {
 		const dir = join(testDir, 'bad-yaml');
 		mkdirSync(dir, { recursive: true });
@@ -169,6 +209,24 @@ spec:
 		const result = loadComponentFromDir(dir, 'user');
 		assert.strictEqual(result.component, null);
 		assert.ok(result.diagnostics.some(d => d.type === 'error'));
+	});
+
+	it('returns error when a component.yaml skill prompt file is missing', () => {
+		const dir = join(testDir, 'missing-prompt');
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, 'component.yaml'), `
+apiVersion: gsd/v1
+kind: skill
+metadata:
+  name: missing-prompt
+  description: "Missing prompt file"
+spec:
+  prompt: SKILL.md
+`, 'utf-8');
+
+		const result = loadComponentFromDir(dir, 'user');
+		assert.strictEqual(result.component, null);
+		assert.ok(result.diagnostics.some(d => d.type === 'error' && d.message.includes('missing referenced file')));
 	});
 
 	it('rejects unsupported component kinds in this slice', () => {
@@ -380,6 +438,7 @@ metadata:
 spec:
   prompt: SKILL.md
 `, 'utf-8');
+		writeFileSync(join(skill2Dir, 'SKILL.md'), 'Content.', 'utf-8');
 
 		const result = scanComponentDir(testDir, 'user');
 		assert.strictEqual(result.components.length, 2);
@@ -401,6 +460,7 @@ metadata:
 spec:
   prompt: SKILL.md
 `, 'utf-8');
+		writeFileSync(join(skillDir, 'SKILL.md'), 'Skill content.', 'utf-8');
 
 		const agentDir = join(testDir, 'my-agent');
 		mkdirSync(agentDir, { recursive: true });
@@ -413,6 +473,7 @@ metadata:
 spec:
   systemPrompt: AGENT.md
 `, 'utf-8');
+		writeFileSync(join(agentDir, 'AGENT.md'), 'Agent content.', 'utf-8');
 
 		const skillsOnly = scanComponentDir(testDir, 'user', 'skill');
 		assert.strictEqual(skillsOnly.components.length, 1);
@@ -437,7 +498,7 @@ description: Should be skipped
 	});
 
 	it('returns empty for non-existent directory', () => {
-		const result = scanComponentDir('/tmp/nonexistent-dir-xyz', 'user');
+		const result = scanComponentDir(join(testDir, 'nonexistent-dir-xyz'), 'user');
 		assert.strictEqual(result.components.length, 0);
 		assert.strictEqual(result.diagnostics.length, 0);
 	});
@@ -498,10 +559,31 @@ metadata:
 spec:
   systemPrompt: AGENT.md
 `, 'utf-8');
+		writeFileSync(join(scoutDir, 'AGENT.md'), 'New format.', 'utf-8');
 
 		const result = scanAgentDir(testDir, 'user');
 		assert.strictEqual(result.components.length, 1);
 		assert.strictEqual(result.components[0].metadata.description, 'From component.yaml');
+		assert.strictEqual(result.components[0].format, 'component-yaml');
+	});
+
+	it('discovers standalone component.yaml agent directories', () => {
+		const scoutDir = join(testDir, 'scout');
+		mkdirSync(scoutDir, { recursive: true });
+		writeFileSync(join(scoutDir, 'component.yaml'), `
+apiVersion: gsd/v1
+kind: agent
+metadata:
+  name: scout
+  description: "From component.yaml"
+spec:
+  systemPrompt: AGENT.md
+`, 'utf-8');
+		writeFileSync(join(scoutDir, 'AGENT.md'), 'New format.', 'utf-8');
+
+		const result = scanAgentDir(testDir, 'user');
+		assert.strictEqual(result.components.length, 1);
+		assert.strictEqual(result.components[0].kind, 'agent');
 		assert.strictEqual(result.components[0].format, 'component-yaml');
 	});
 });
