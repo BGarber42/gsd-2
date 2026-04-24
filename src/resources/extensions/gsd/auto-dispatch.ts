@@ -59,7 +59,7 @@ import {
 import { resolveModelWithFallbacksForUnit } from "./preferences-models.js";
 import { resolveUokFlags } from "./uok/flags.js";
 import { selectReactiveDispatchBatch } from "./uok/execution-graph.js";
-import { EXECUTION_ENTRY_PHASES } from "./uok/plan-v2.js";
+import { EXECUTION_ENTRY_PHASES, hasFinalizedMilestoneContext } from "./uok/plan-v2.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -260,12 +260,9 @@ export const DISPATCH_RULES: DispatchRule[] = [
     name: "execution-entry phase (no context) → discuss-milestone",
     match: async ({ state, mid, midTitle, basePath, structuredQuestionsAvailable }) => {
       if (!EXECUTION_ENTRY_PHASES.has(state.phase)) return null;
-      const contextFile = resolveMilestoneFile(basePath, mid, "CONTEXT");
-      // Align with the plan-v2 gate's `hasFileContent`: whitespace-only counts
-      // as missing so we redispatch instead of letting the gate block.
-      const contextContent = contextFile ? await loadFile(contextFile) : null;
-      const hasContext = !!(contextContent && contextContent.trim().length > 0);
-      if (hasContext) return null; // normal execution-entry flow
+      // Align with the plan-v2 gate's lookup semantics: whitespace-only counts
+      // as missing, and an auto worktree may fall back to GSD_PROJECT_ROOT.
+      if (hasFinalizedMilestoneContext(basePath, mid)) return null;
       return {
         action: "dispatch",
         unitType: "discuss-milestone",

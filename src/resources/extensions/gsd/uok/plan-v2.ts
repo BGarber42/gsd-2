@@ -65,6 +65,14 @@ function hasMilestoneFileContent(
   return false;
 }
 
+export function hasFinalizedMilestoneContext(basePath: string, milestoneId: string): boolean {
+  return hasMilestoneFileContent(basePath, milestoneId, "CONTEXT");
+}
+
+export function isMissingFinalizedContextResult(result: PlanV2CompileResult): boolean {
+  return !result.ok && result.finalizedContextIncluded === false;
+}
+
 function countSliceResearchArtifacts(basePath: string, milestoneId: string, slices: SliceRow[]): number {
   let count = 0;
   for (const slice of slices) {

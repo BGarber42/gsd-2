@@ -99,6 +99,34 @@ describe("#4671 execution-entry phase missing-context recovery", () => {
     }
   });
 
+  test("phase=executing accepts finalized CONTEXT.md from GSD_PROJECT_ROOT fallback", async () => {
+    const projectRoot = makeBasePath("project-root-context");
+    const worktreeBase = makeBasePath("worktree-context");
+    const prevProjectRoot = process.env.GSD_PROJECT_ROOT;
+    try {
+      writeFileSync(
+        join(projectRoot, ".gsd", "milestones", "M001", "M001-CONTEXT.md"),
+        "# M001 Context\n\nFinalized context at project root.\n",
+      );
+      process.env.GSD_PROJECT_ROOT = projectRoot;
+
+      const action = await findRule().match(buildCtx(worktreeBase, buildState("executing")));
+      assert.strictEqual(
+        action,
+        null,
+        "rule must align with plan-v2 project-root fallback before redispatching",
+      );
+    } finally {
+      if (prevProjectRoot === undefined) {
+        delete process.env.GSD_PROJECT_ROOT;
+      } else {
+        process.env.GSD_PROJECT_ROOT = prevProjectRoot;
+      }
+      rmSync(projectRoot, { recursive: true, force: true });
+      rmSync(worktreeBase, { recursive: true, force: true });
+    }
+  });
+
   test("phase=pre-planning does not trigger this rule (handled by upstream rule)", async () => {
     const basePath = makeBasePath("pre-planning");
     try {
