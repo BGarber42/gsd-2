@@ -370,7 +370,9 @@ describe("spot-checks for models added in this regeneration", () => {
 		{ provider: "groq", id: "groq/compound-mini" },
 		{ provider: "huggingface", id: "zai-org/GLM-5.1" },
 		{ provider: "openai", id: "gpt-5.3-chat-latest" },
+		{ provider: "openai", id: "gpt-5.5", reasoning: true },
 		{ provider: "openai-codex", id: "gpt-5.4-mini", reasoning: true },
+		{ provider: "openai-codex", id: "gpt-5.5", reasoning: true },
 		{ provider: "mistral", id: "mistral-small-2603" },
 		{ provider: "zai", id: "glm-5.1" },
 	];
@@ -386,4 +388,20 @@ describe("spot-checks for models added in this regeneration", () => {
 			}
 		});
 	}
+});
+
+describe("GPT-5.5 availability", () => {
+	it("exposes GPT-5.5 through OpenAI API and OpenAI Codex providers", () => {
+		const apiModel = getModel("openai", "gpt-5.5" as any);
+		assert.ok(apiModel, "openai/gpt-5.5 should be present");
+		assert.equal(apiModel.contextWindow, 1000000);
+		assert.equal(apiModel.cost.input, 5);
+		assert.equal(apiModel.cost.output, 30);
+
+		const codexModel = getModel("openai-codex", "gpt-5.5" as any);
+		assert.ok(codexModel, "openai-codex/gpt-5.5 should be present");
+		assert.equal(codexModel.contextWindow, 400000);
+		assert.equal(codexModel.cost.input, 5);
+		assert.equal(codexModel.cost.output, 30);
+	});
 });

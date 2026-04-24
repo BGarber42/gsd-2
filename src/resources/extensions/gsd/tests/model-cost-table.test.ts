@@ -101,3 +101,11 @@ test("#2885: lookupModelCost returns costs for new models (not 999 fallback)", (
     assert.ok(entry.inputPer1k < 999, `${model} should have a real cost, not the 999 fallback`);
   }
 });
+
+test("gpt-5.5 uses official OpenAI list pricing", () => {
+  const entry = lookupModelCost("gpt-5.5");
+  assert.ok(entry, "lookupModelCost should find gpt-5.5");
+  assert.equal(entry.inputPer1k, 0.005);
+  assert.equal(entry.outputPer1k, 0.03);
+  assert.equal(entry.updatedAt, "2026-04-23");
+});

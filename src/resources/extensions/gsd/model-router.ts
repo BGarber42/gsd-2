@@ -189,6 +189,9 @@ export const MODEL_CAPABILITY_PROFILES: Record<string, ModelCapabilities> = {
   "gpt-5.3-codex":                { coding: 94, debugging: 91, research: 74, reasoning: 89, speed: 50, longContext: 80, instruction: 89 },
   "gpt-5.3-codex-spark":          { coding: 68, debugging: 58, research: 42, reasoning: 52, speed: 90, longContext: 50, instruction: 74 },
   "gpt-5.4":                      { coding: 95, debugging: 92, research: 88, reasoning: 94, speed: 42, longContext: 88, instruction: 92 },
+  // GPT-5.5 scores are relative to the existing gpt-5.4 profile and backed by
+  // OpenAI's 2026-04-23 published eval deltas across coding, tool use, and long context.
+  // Source: https://openai.com/index/introducing-gpt-5-5/
   "gpt-5.5":                      { coding: 96, debugging: 93, research: 89, reasoning: 95, speed: 42, longContext: 90, instruction: 93 },
 
   // ── OpenAI o-series (reasoning-first) ──────────────────────────────────────

@@ -708,7 +708,10 @@ async function generateModels() {
 			candidate.maxTokens = 128000;
 		}
 		if (candidate.provider === "openai" && candidate.id === "gpt-5.5") {
-			candidate.contextWindow = 400000;
+			// GPT-5.5 has a 1M context window.
+			// Keep max output aligned with existing GPT-5.x local constraints.
+			// Source: https://openai.com/index/introducing-gpt-5-5/
+			candidate.contextWindow = 1000000;
 			candidate.maxTokens = 128000;
 		}
 		// Keep selected OpenRouter model metadata stable until upstream settles.
@@ -956,13 +959,13 @@ async function generateModels() {
 			reasoning: true,
 			input: ["text", "image"],
 			cost: {
-				// Tentative: announced 2026-04-23, API list price; confirm at GA.
+				// Source: https://openai.com/api/pricing/
 				input: 5,
 				output: 30,
 				cacheRead: 0.5,
 				cacheWrite: 0,
 			},
-			contextWindow: 400000,
+			contextWindow: 1000000,
 			maxTokens: 128000,
 		});
 	}
@@ -1066,7 +1069,10 @@ async function generateModels() {
 			baseUrl: CODEX_BASE_URL,
 			reasoning: true,
 			input: ["text", "image"],
-			// Tentative cost: announced 2026-04-23 list price; confirm at API GA.
+			// Official GPT-5.5 list price; Codex availability and 400K window are live.
+			// Sources:
+			// - https://openai.com/index/introducing-gpt-5-5/
+			// - https://openai.com/api/pricing/
 			cost: { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 0 },
 			contextWindow: 400000,
 			maxTokens: CODEX_MAX_TOKENS,
