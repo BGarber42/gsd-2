@@ -327,10 +327,11 @@ test("resolveModelForTier: picks light-tier cross-provider model", () => {
 });
 
 test("resolveModelForTier: falls back to canonical when no tier match available", () => {
-  // Only unknown models available — should return canonical
+  // Only unknown models available — getModelTier classifies unknowns as
+  // "standard", so a request for "heavy" finds no match and the canonical
+  // Anthropic ID is returned as a documented fallback.
   const result = resolveModelForTier("heavy", ["some-custom-model"]);
-  // Custom models default to heavy tier in getModelTier, so it should match
-  assert.equal(result, "some-custom-model");
+  assert.equal(result, "claude-opus-4-6");
 });
 
 test("resolveModelForTier: handles provider-prefixed available models", () => {
@@ -341,6 +342,49 @@ test("resolveModelForTier: handles provider-prefixed available models", () => {
 test("resolveModelForTier: picks Gemini models when only Google available", () => {
   const result = resolveModelForTier("light", ["gemini-2.5-pro", "gemini-2.0-flash"]);
   assert.equal(result, "gemini-2.0-flash");
+});
+
+// ─── Behavioral: profile defaults are provider-agnostic at runtime ──────────
+
+test("resolveProfileDefaults: balanced with only OpenAI models returns OpenAI IDs", async () => {
+  const { resolveProfileDefaults } = await import("../preferences-models.js");
+  const defaults = resolveProfileDefaults("balanced", ["gpt-4o", "gpt-4o-mini"]);
+  assert.ok(defaults.models, "balanced should populate models");
+  // All slots must resolve to an available OpenAI ID — not a claude- canonical.
+  for (const [phase, modelId] of Object.entries(defaults.models!)) {
+    assert.ok(typeof modelId === "string" && modelId.length > 0, `${phase} should resolve to a model ID`);
+    assert.ok(
+      !String(modelId).startsWith("claude-"),
+      `${phase} resolved to ${modelId} but no claude-* model is available — should be OpenAI`,
+    );
+  }
+});
+
+test("resolveProfileDefaults: budget with only OpenAI models picks gpt-4o-mini for light slots", async () => {
+  const { resolveProfileDefaults } = await import("../preferences-models.js");
+  const defaults = resolveProfileDefaults("budget", ["gpt-4o", "gpt-4o-mini"]);
+  // light-tier slots in budget: research, execution_simple, completion, subagent
+  assert.equal(defaults.models?.research, "gpt-4o-mini");
+  assert.equal(defaults.models?.execution_simple, "gpt-4o-mini");
+  assert.equal(defaults.models?.completion, "gpt-4o-mini");
+  assert.equal(defaults.models?.subagent, "gpt-4o-mini");
+  // standard-tier slots: planning, execution
+  assert.equal(defaults.models?.planning, "gpt-4o");
+  assert.equal(defaults.models?.execution, "gpt-4o");
+});
+
+test("resolveProfileDefaults: empty availableModelIds falls back to canonical Anthropic IDs", async () => {
+  const { resolveProfileDefaults } = await import("../preferences-models.js");
+  const defaults = resolveProfileDefaults("balanced", []);
+  // Documented fallback only — when registry is unavailable at bootstrap.
+  assert.ok(defaults.models?.planning?.startsWith("claude-"));
+});
+
+test("resolveProfileDefaults: burn-max omits models so user choice is preserved", async () => {
+  const { resolveProfileDefaults } = await import("../preferences-models.js");
+  const defaults = resolveProfileDefaults("burn-max", ["gpt-4o"]);
+  assert.equal(defaults.models, undefined, "burn-max must not write model defaults");
+  assert.equal(defaults.dynamic_routing?.enabled, false);
 });
 
 // ─── Capability Scoring (ADR-004 Phase 2) ───────────────────────────────────

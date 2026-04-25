@@ -390,6 +390,10 @@ const PROFILE_TIER_MAP: Record<TokenProfile, Record<string, ComplexityTier>> = {
     completion: "light",
     subagent: "standard",
   },
+  // burn-max intentionally omits a tier map: it never writes model defaults
+  // (it preserves the user's explicit model selection), so resolveProfileDefaults
+  // skips model resolution for this profile.
+  "burn-max": {},
 };
 
 /**
@@ -409,18 +413,21 @@ export function resolveProfileDefaults(
   profile: TokenProfile,
   availableModelIds: string[] = [],
 ): Partial<GSDPreferences> {
+  // burn-max never writes model defaults — preserve user-selected models.
+  // For the other three profiles, derive concrete model IDs from the tier map
+  // against the available-model list (provider-agnostic when the registry is
+  // populated, canonical fallback at early bootstrap).
   const tierMap = PROFILE_TIER_MAP[profile];
-  const resolve = (phase: string): string =>
-    resolveModelForTier(tierMap[phase], availableModelIds);
-
-  const models: GSDModelConfigV2 = {
-    planning: resolve("planning"),
-    research: resolve("research"),
-    execution: resolve("execution"),
-    execution_simple: resolve("execution_simple"),
-    completion: resolve("completion"),
-    subagent: resolve("subagent"),
-  };
+  const models: GSDModelConfigV2 | undefined = profile === "burn-max"
+    ? undefined
+    : {
+        planning: resolveModelForTier(tierMap.planning, availableModelIds),
+        research: resolveModelForTier(tierMap.research, availableModelIds),
+        execution: resolveModelForTier(tierMap.execution, availableModelIds),
+        execution_simple: resolveModelForTier(tierMap.execution_simple, availableModelIds),
+        completion: resolveModelForTier(tierMap.completion, availableModelIds),
+        subagent: resolveModelForTier(tierMap.subagent, availableModelIds),
+      };
 
   switch (profile) {
     case "budget":

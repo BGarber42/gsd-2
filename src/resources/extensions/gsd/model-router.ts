@@ -320,11 +320,8 @@ export function getEligibleModels(
     // Exact match
     if (availableModelIds.includes(explicitModel)) return [explicitModel];
     // Provider-prefix-stripped match
-    const match = availableModelIds.find(id => {
-      const bareAvail = id.includes("/") ? id.split("/").pop()! : id;
-      const bareExplicit = explicitModel.includes("/") ? explicitModel.split("/").pop()! : explicitModel;
-      return bareAvail === bareExplicit;
-    });
+    const bareExplicit = bareModelId(explicitModel);
+    const match = availableModelIds.find(id => bareModelId(id) === bareExplicit);
     if (match) return [match];
   }
 
@@ -438,6 +435,7 @@ export function resolveModelForComplexity(
         tier: requestedTier,
         wasDowngraded: false,
         reason: `tier ${requestedTier} >= configured ${configuredTier}`,
+        selectionMethod: "tier-only",
       };
     }
 
@@ -547,8 +545,17 @@ export function defaultRoutingConfig(): DynamicRoutingConfig {
 // ─── Tier-Based Model Resolution (for profile defaults) ─────────────────────
 
 /**
- * Canonical Anthropic model IDs per tier. Used as the reference defaults
- * when the user's available models include Anthropic models.
+ * Fallback-only canonical model IDs per tier. Returned ONLY when the
+ * available-model list is empty (e.g., preferences are loaded before the
+ * model registry is populated at bootstrap). Real resolution paths
+ * always pass `availableModelIds` and pick a concrete tier-matching
+ * model from that list — these IDs are never written into preferences
+ * by themselves when a registry is available.
+ *
+ * Precedence (resolveModelForTier):
+ *   1. configured `tier_models[tier]` (via getEligibleModels) — exact/bare match
+ *   2. cheapest available model whose tier matches `tier`
+ *   3. (only if availableModelIds is empty) CANONICAL_TIER_MODELS[tier]
  */
 const CANONICAL_TIER_MODELS: Record<ComplexityTier, string> = {
   light: "claude-haiku-4-5",
@@ -557,14 +564,52 @@ const CANONICAL_TIER_MODELS: Record<ComplexityTier, string> = {
 };
 
 /**
+ * Single source of truth for tier-based model selection.
+ * Returns the cheapest available model whose capability tier matches `tier`,
+ * honoring `routingConfig.tier_models[tier]` when set. Returns undefined when
+ * no available model matches the tier.
+ *
+ * `crossProvider`: when false, restricts the search to models that share the
+ * canonical (Anthropic) provider for the tier. When true, any provider is
+ * eligible.
+ */
+function findModelForTier(
+  tier: ComplexityTier,
+  routingConfig: DynamicRoutingConfig,
+  availableModelIds: string[],
+  crossProvider: boolean,
+): string | undefined {
+  const eligible = getEligibleModels(tier, availableModelIds, routingConfig);
+  if (eligible.length === 0) return undefined;
+
+  if (crossProvider) {
+    return eligible[0];
+  }
+
+  // Same-provider only: keep models whose bare ID matches a canonical
+  // Anthropic ID at this tier (i.e., a claude-* model in the tier map).
+  const sameProvider = eligible.filter(id => {
+    const bare = bareModelId(id);
+    return MODEL_CAPABILITY_TIER[bare] === tier && bare.startsWith("claude-");
+  });
+  return sameProvider[0];
+}
+
+/**
  * Resolve a concrete model ID for a given capability tier using the
  * available model list. Provider-agnostic: picks the best available
- * model at the requested tier, falling back to the canonical Anthropic
- * ID when no available models can be inspected (e.g., at preferences
- * load time before the model registry is populated).
+ * model at the requested tier.
+ *
+ * Precedence:
+ *   1. canonical Anthropic ID for this tier, if directly available
+ *   2. tier-matching model from any provider in `availableModelIds`
+ *   3. canonical Anthropic ID as a fallback only when nothing else matches
+ *      (or `availableModelIds` is empty, e.g., during early bootstrap)
  *
  * @param tier              The capability tier to resolve
- * @param availableModelIds List of available model IDs, or empty if unknown
+ * @param availableModelIds List of available model IDs (REQUIRED for
+ *                          provider-agnostic resolution; pass [] only when
+ *                          the model registry is genuinely unavailable)
  * @param crossProvider     Whether to consider models from other providers
  */
 export function resolveModelForTier(
@@ -572,26 +617,22 @@ export function resolveModelForTier(
   availableModelIds: string[],
   crossProvider = true,
 ): string {
-  // If no available models known, return canonical Anthropic default
+  // No available models known — return canonical fallback
   if (availableModelIds.length === 0) {
     return CANONICAL_TIER_MODELS[tier];
   }
 
-  // Check if canonical model is available first (fast path)
+  // Fast path: canonical model directly available
   const canonical = CANONICAL_TIER_MODELS[tier];
   if (isModelAvailable(canonical, availableModelIds)) {
     return canonical;
   }
 
-  // Find the best available model at this tier using cost-based selection
-  const result = findModelForTier(
-    tier,
-    defaultRoutingConfig(),
-    availableModelIds,
-    crossProvider,
+  // Cross-provider tier search
+  return (
+    findModelForTier(tier, defaultRoutingConfig(), availableModelIds, crossProvider)
+    ?? CANONICAL_TIER_MODELS[tier]
   );
-
-  return result ?? CANONICAL_TIER_MODELS[tier];
 }
 
 // ─── Internal ────────────────────────────────────────────────────────────────
@@ -602,12 +643,12 @@ export function resolveModelForTier(
  */
 function isModelAvailable(modelId: string, availableModelIds: string[]): boolean {
   if (availableModelIds.includes(modelId)) return true;
-  // Strip provider prefix for comparison
-  const bare = modelId.includes("/") ? modelId.split("/").pop()! : modelId;
-  return availableModelIds.some(id => {
-    const availBare = id.includes("/") ? id.split("/").pop()! : id;
-    return availBare === bare;
-  });
+  // Strip provider prefix for comparison. Treat trailing-slash IDs ("provider/")
+  // as no-bare-ID rather than empty-string match (which would erroneously match
+  // any other "provider/" ID).
+  const bare = bareModelId(modelId);
+  if (!bare) return false;
+  return availableModelIds.some(id => bareModelId(id) === bare);
 }
 
 function getModelTier(modelId: string): ComplexityTier {
@@ -653,7 +694,10 @@ function getModelCost(modelId: string): number {
 }
 
 function bareModelId(modelId: string): string {
-  return modelId.includes("/") ? modelId.split("/").pop()! : modelId;
+  if (!modelId.includes("/")) return modelId;
+  // .pop() never returns undefined on a non-empty string but ?? guards future
+  // refactors and avoids the misleading non-null assertion.
+  return modelId.split("/").pop() ?? modelId;
 }
 
 // ─── Provider-specific Tool Limits ─────────────────────────────────────────

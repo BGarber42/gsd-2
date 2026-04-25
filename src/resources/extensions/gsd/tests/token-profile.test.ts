@@ -129,12 +129,19 @@ test("profile: PROFILE_TIER_MAP defines tier intentions for all profiles", () =>
   );
 });
 
-test("profile: resolveProfileDefaults uses resolveModelForTier, not hardcoded IDs", () => {
-  // The function should call resolveModelForTier for model resolution
-  assert.ok(
-    preferencesSrc.includes("resolveModelForTier"),
-    "resolveProfileDefaults should use resolveModelForTier for provider-agnostic resolution",
-  );
+test("profile: resolveProfileDefaults is provider-agnostic — picks OpenAI when only OpenAI is available", async () => {
+  // Behavioral check: with only OpenAI models in the available list, no slot
+  // should resolve to a claude-* model. Source-grep cannot prove this — only
+  // exercising the function with a controlled available-model list can.
+  const { resolveProfileDefaults } = await import("../preferences-models.ts");
+  const defaults = resolveProfileDefaults("balanced", ["gpt-4o", "gpt-4o-mini"]);
+  assert.ok(defaults.models, "balanced profile should populate models");
+  for (const [phase, modelId] of Object.entries(defaults.models!)) {
+    assert.ok(
+      typeof modelId === "string" && !String(modelId).startsWith("claude-"),
+      `${phase} resolved to ${modelId} but only OpenAI is available`,
+    );
+  }
 });
 
 test("profile: budget profile sets phase skips to true", () => {
