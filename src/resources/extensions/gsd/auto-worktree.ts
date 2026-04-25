@@ -99,6 +99,42 @@ const ROOT_STATE_FILES = [
 ] as const;
 
 /**
+ * Pop a stash entry by tracking SHA so concurrent stash operations against
+ * the same project root cannot cause us to pop the wrong entry.
+ *
+ * If `stashSha` is null or no longer present in the stash list (e.g. a
+ * concurrent process popped/dropped it), falls back to plain `git stash pop`
+ * targeting `stash@{0}`.
+ *
+ * Throws on pop failure so callers can handle conflict cases the same way
+ * they would with the prior `git stash pop` form.
+ *
+ * (Issue #4980 HIGH-6)
+ */
+function popStashByRef(basePath: string, stashSha: string | null): void {
+  let popArg: string | null = null;
+  if (stashSha) {
+    try {
+      const list = execFileSync("git", ["stash", "list", "--format=%H"], {
+        cwd: basePath,
+        stdio: ["ignore", "pipe", "pipe"],
+        encoding: "utf-8",
+      }).trim().split("\n").filter(Boolean);
+      const idx = list.indexOf(stashSha);
+      if (idx >= 0) popArg = `stash@{${idx}}`;
+    } catch {
+      /* fall through to default pop */
+    }
+  }
+  const args = popArg ? ["stash", "pop", popArg] : ["stash", "pop"];
+  execFileSync("git", args, {
+    cwd: basePath,
+    stdio: ["ignore", "pipe", "pipe"],
+    encoding: "utf-8",
+  });
+}
+
+/**
  * Check if two filesystem paths resolve to the same real location.
  * Returns false if either path cannot be resolved (e.g. doesn't exist).
  */
@@ -971,6 +1007,21 @@ export function enterBranchModeForMilestone(
       validatedPrefBranch ??
       nativeDetectMainBranch(basePath);
 
+    // Ancestry guard: refuse to force-reset a branch that has commits not
+    // reachable from startPoint. Crash-then-resume cycles that don't write
+    // a resume file would otherwise silently orphan prior-session work.
+    // (Issue #4980 HIGH-3)
+    if (nativeBranchExists(basePath, branch)) {
+      const branchIsAncestor = nativeIsAncestor(basePath, branch, startPoint);
+      if (!branchIsAncestor) {
+        throw new GSDError(
+          GSD_GIT_ERROR,
+          `Branch "${branch}" already has commits not reachable from "${startPoint}". ` +
+          `Refusing to force-reset — would orphan prior work. ` +
+          `Resume the existing milestone or run \`git branch -D ${branch}\` to discard.`,
+        );
+      }
+    }
     // nativeBranchForceReset creates (or resets) branch at startPoint,
     // then checkout switches HEAD to it.
     nativeBranchForceReset(basePath, branch, startPoint);
@@ -1576,7 +1627,19 @@ export function mergeMilestoneToMain(
 
   // 5. Checkout integration branch (skip if already current — avoids git error
   //    when main is already checked out in the project-root worktree, #757)
+  //
+  // Refuse to proceed if the project root is in detached HEAD state. Silently
+  // running `nativeCheckoutBranch(mainBranch)` on a detached HEAD would
+  // abandon the user's deliberately-checked-out commit (mid-bisect, reviewing
+  // a tag, CI checkout-sha) without warning. (Issue #4980 HIGH-10)
   const currentBranchAtBase = nativeGetCurrentBranch(originalBasePath_);
+  if (!currentBranchAtBase || currentBranchAtBase.length === 0) {
+    throw new GSDError(
+      GSD_GIT_ERROR,
+      `Project root is in detached HEAD state — cannot perform milestone merge. ` +
+      `Checkout an integration branch (e.g. \`git checkout ${mainBranch}\`) before resuming.`,
+    );
+  }
   if (currentBranchAtBase !== mainBranch) {
     nativeCheckoutBranch(originalBasePath_, mainBranch);
   }
@@ -1768,6 +1831,11 @@ export function mergeMilestoneToMain(
   }
 
   let stashed = false;
+  // Capture the stash commit SHA so subsequent pop/drop targets the entry we
+  // created, not whatever happens to be at stash@{0} (concurrent milestone
+  // merges share the project-root stash list and can shift positions).
+  // (Issue #4980 HIGH-6)
+  let stashSha: string | null = null;
   try {
     const status = execFileSync("git", ["status", "--porcelain"], {
       cwd: originalBasePath_,
@@ -1781,6 +1849,15 @@ export function mergeMilestoneToMain(
         { cwd: originalBasePath_, stdio: ["ignore", "pipe", "pipe"], encoding: "utf-8" },
       );
       stashed = true;
+      try {
+        stashSha = execFileSync("git", ["rev-parse", "refs/stash"], {
+          cwd: originalBasePath_,
+          stdio: ["ignore", "pipe", "pipe"],
+          encoding: "utf-8",
+        }).trim();
+      } catch (refErr) {
+        logWarning("worktree", `failed to capture stash SHA: ${refErr instanceof Error ? refErr.message : String(refErr)}`);
+      }
     }
   } catch (err) {
     // Stash failure is non-fatal — proceed without stash and let the merge
@@ -1834,11 +1911,7 @@ export function mergeMilestoneToMain(
       // Pop stash before throwing so local work is not lost.
       if (stashed) {
         try {
-          execFileSync("git", ["stash", "pop"], {
-            cwd: originalBasePath_,
-            stdio: ["ignore", "pipe", "pipe"],
-            encoding: "utf-8",
-          });
+          popStashByRef(originalBasePath_, stashSha);
         } catch (err) { /* stash pop conflict is non-fatal */
           logWarning("worktree", `git stash pop failed: ${err instanceof Error ? err.message : String(err)}`);
         }
@@ -1910,11 +1983,7 @@ export function mergeMilestoneToMain(
         // Pop stash before throwing so local work is not lost (#2151).
         if (stashed) {
           try {
-            execFileSync("git", ["stash", "pop"], {
-              cwd: originalBasePath_,
-              stdio: ["ignore", "pipe", "pipe"],
-              encoding: "utf-8",
-            });
+            popStashByRef(originalBasePath_, stashSha);
           } catch (err) { /* stash pop conflict is non-fatal */
             logWarning("worktree", `git stash pop failed: ${err instanceof Error ? err.message : String(err)}`);
           }
@@ -1963,11 +2032,7 @@ export function mergeMilestoneToMain(
   // preserved and the user can resolve manually with `git stash pop`.
   if (stashed) {
     try {
-      execFileSync("git", ["stash", "pop"], {
-        cwd: originalBasePath_,
-        stdio: ["ignore", "pipe", "pipe"],
-        encoding: "utf-8",
-      });
+      popStashByRef(originalBasePath_, stashSha);
     } catch (e) {
       logWarning("worktree", `git stash pop failed, attempting conflict resolution: ${(e as Error).message}`);
       // Stash pop after squash merge can conflict on .gsd/ state files that
