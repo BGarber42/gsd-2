@@ -90,6 +90,43 @@ export type MemoryPolicy = "none" | "critical-only" | "prompt-relevant";
 /** Preferences block policy. */
 export type PreferencesPolicy = "none" | "active-only" | "full";
 
+/**
+ * Tool-access policy per unit type (#4934).
+ *
+ * Declarative-only in this PR — runtime enforcement (write-gate.ts predicate
+ * + dispatch-time isolation) lands in follow-up PRs. The shape is the
+ * agreement between manifest authors and enforcement; surfacing it now lets
+ * reviewers ratify per-unit policy intent before any blocking logic ships.
+ *
+ * Modes:
+ *   - "all"        — Read + Edit/Write/MultiEdit/NotebookEdit + Bash + Task.
+ *                    The unit may modify any file in the working tree.
+ *                    Reserved for execute-task / reactive-execute, which run
+ *                    in worktrees today and whose writes are committed.
+ *   - "read-only"  — Read tools only. No file mutation. No shell. No subagent
+ *                    dispatch. Reserved for future units that should be
+ *                    strictly observational (none today).
+ *   - "planning"   — Read tools always; writes restricted to .gsd/** under
+ *                    basePath; Bash limited to a per-unit safe allowlist;
+ *                    Task subagent dispatch denied. Catches the bug class
+ *                    where a discuss-milestone turn modifies user source
+ *                    files (forensics: ~/Github/test-apps/b23, #4934).
+ *   - "docs"       — Read tools always; writes restricted to .gsd/** AND
+ *                    the explicit `allowedPathGlobs` set; Bash safe-allowlist;
+ *                    no subagents. Reserved for rewrite-docs, which legitimately
+ *                    edits project markdown outside .gsd/.
+ *
+ * The allowlist for "docs" is declared per-manifest rather than hardcoded so
+ * projects with non-standard doc layouts can extend it without forking the
+ * enforcement code (open question for the wiring PR — exact representation
+ * may shift). Globs are interpreted relative to the project basePath.
+ */
+export type ToolsPolicy =
+  | { readonly mode: "all" }
+  | { readonly mode: "read-only" }
+  | { readonly mode: "planning" }
+  | { readonly mode: "docs"; readonly allowedPathGlobs: readonly string[] };
+
 // ─── Computed-artifact registry (#4924 v2 contract) ───────────────────────
 
 /**
@@ -176,6 +213,13 @@ export interface UnitContextManifest {
   readonly codebaseMap: boolean;
   /** Preferences block policy. */
   readonly preferences: PreferencesPolicy;
+  /**
+   * Tool-access policy (#4934). Declarative in this PR; runtime enforcement
+   * (path-scoped write blocking + subagent denial + bash allowlist) lands
+   * in follow-ups. Required on every manifest so missing entries fail loud
+   * via the CI invariant test rather than defaulting to "all" silently.
+   */
+  readonly tools: ToolsPolicy;
   /** Artifact handling: inline (full body), excerpt (compact), or on-demand (path only). */
   readonly artifacts: {
     readonly inline: readonly ArtifactKey[];
@@ -218,6 +262,28 @@ const COMMON_BUDGET_LARGE = 1_500_000;  // ~400K tokens
 const COMMON_BUDGET_MEDIUM = 750_000;   // ~200K tokens
 const COMMON_BUDGET_SMALL = 250_000;    // ~65K tokens
 
+// ─── Tool policy constants (#4934) ────────────────────────────────────────
+// Reused across manifests so per-unit assignment stays declarative and the
+// allowed-path set for the docs policy lives in one reviewable place.
+
+const TOOLS_ALL: ToolsPolicy = { mode: "all" };
+const TOOLS_PLANNING: ToolsPolicy = { mode: "planning" };
+const TOOLS_DOCS: ToolsPolicy = {
+  mode: "docs",
+  // Globs are resolved relative to project basePath. The set is intentionally
+  // narrow: top-level docs/, README, CHANGELOG, and any markdown at the
+  // project root. Projects with non-standard layouts (e.g. mintlify-docs/)
+  // will need this list extended in a follow-up; landed conservative now,
+  // expand on demand.
+  allowedPathGlobs: [
+    "docs/**",
+    "README.md",
+    "README.*.md",
+    "CHANGELOG.md",
+    "*.md",
+  ],
+};
+
 /**
  * Canonical unit types handled by auto-mode dispatch. The coverage test
  * enumerates these against `UNIT_MANIFESTS` to catch manifest drift when
@@ -252,6 +318,7 @@ export const UNIT_MANIFESTS: Record<UnitType, UnitContextManifest> = {
     memory: "prompt-relevant",
     codebaseMap: true,
     preferences: "active-only",
+    tools: TOOLS_PLANNING,
     artifacts: {
       // Phase 3 migration (#4782): matches today's actual
       // buildResearchMilestonePrompt inlining order.
@@ -267,6 +334,7 @@ export const UNIT_MANIFESTS: Record<UnitType, UnitContextManifest> = {
     memory: "prompt-relevant",
     codebaseMap: true,
     preferences: "active-only",
+    tools: TOOLS_PLANNING,
     artifacts: {
       inline: ["project", "requirements", "decisions", "milestone-research", "templates"],
       excerpt: [],
@@ -280,6 +348,7 @@ export const UNIT_MANIFESTS: Record<UnitType, UnitContextManifest> = {
     memory: "prompt-relevant",
     codebaseMap: true,
     preferences: "active-only",
+    tools: TOOLS_PLANNING,
     artifacts: {
       inline: ["project", "requirements", "decisions", "milestone-context", "templates"],
       excerpt: [],
@@ -293,6 +362,7 @@ export const UNIT_MANIFESTS: Record<UnitType, UnitContextManifest> = {
     memory: "prompt-relevant",
     codebaseMap: false,
     preferences: "active-only",
+    tools: TOOLS_PLANNING,
     artifacts: {
       inline: ["roadmap", "slice-summary", "slice-uat", "requirements", "decisions", "templates"],
       excerpt: [],
@@ -306,6 +376,7 @@ export const UNIT_MANIFESTS: Record<UnitType, UnitContextManifest> = {
     memory: "prompt-relevant",
     codebaseMap: false,
     preferences: "active-only",
+    tools: TOOLS_PLANNING,
     artifacts: {
       // #4780 landed slice-summary as excerpt for this unit; phase 2 of
       // the architecture will read this manifest as the source of truth
@@ -324,6 +395,7 @@ export const UNIT_MANIFESTS: Record<UnitType, UnitContextManifest> = {
     memory: "prompt-relevant",
     codebaseMap: true,
     preferences: "active-only",
+    tools: TOOLS_PLANNING,
     artifacts: {
       inline: ["roadmap", "milestone-research", "dependency-summaries", "templates"],
       excerpt: [],
@@ -337,6 +409,7 @@ export const UNIT_MANIFESTS: Record<UnitType, UnitContextManifest> = {
     memory: "prompt-relevant",
     codebaseMap: true,
     preferences: "active-only",
+    tools: TOOLS_PLANNING,
     artifacts: {
       inline: ["roadmap", "slice-research", "dependency-summaries", "requirements", "decisions", "templates"],
       excerpt: [],
@@ -350,6 +423,7 @@ export const UNIT_MANIFESTS: Record<UnitType, UnitContextManifest> = {
     memory: "prompt-relevant",
     codebaseMap: true,
     preferences: "active-only",
+    tools: TOOLS_PLANNING,
     artifacts: {
       inline: ["slice-plan", "slice-research", "dependency-summaries", "templates"],
       excerpt: [],
@@ -363,6 +437,7 @@ export const UNIT_MANIFESTS: Record<UnitType, UnitContextManifest> = {
     memory: "prompt-relevant",
     codebaseMap: true,
     preferences: "active-only",
+    tools: TOOLS_PLANNING,
     artifacts: {
       inline: ["slice-plan", "slice-research", "dependency-summaries", "prior-task-summaries", "templates"],
       excerpt: [],
@@ -376,6 +451,7 @@ export const UNIT_MANIFESTS: Record<UnitType, UnitContextManifest> = {
     memory: "prompt-relevant",
     codebaseMap: false,
     preferences: "active-only",
+    tools: TOOLS_PLANNING,
     artifacts: {
       // Phase 3 migration (#4782): matches today's actual
       // buildCompleteSlicePrompt inlining order. Overrides prepend +
@@ -393,6 +469,7 @@ export const UNIT_MANIFESTS: Record<UnitType, UnitContextManifest> = {
     memory: "critical-only",
     codebaseMap: false,
     preferences: "none",
+    tools: TOOLS_PLANNING,
     artifacts: {
       // Phase 2 pilot (#4782): manifest now matches today's actual
       // buildReassessRoadmapPrompt behavior for equivalence. Phase 3
@@ -411,6 +488,7 @@ export const UNIT_MANIFESTS: Record<UnitType, UnitContextManifest> = {
     memory: "prompt-relevant",
     codebaseMap: true,
     preferences: "active-only",
+    tools: TOOLS_ALL,
     artifacts: {
       inline: ["task-plan", "slice-plan", "prior-task-summaries", "templates"],
       excerpt: [],
@@ -424,6 +502,7 @@ export const UNIT_MANIFESTS: Record<UnitType, UnitContextManifest> = {
     memory: "prompt-relevant",
     codebaseMap: true,
     preferences: "active-only",
+    tools: TOOLS_ALL,
     artifacts: {
       inline: ["slice-plan", "prior-task-summaries", "templates"],
       excerpt: [],
@@ -439,6 +518,7 @@ export const UNIT_MANIFESTS: Record<UnitType, UnitContextManifest> = {
     memory: "critical-only",
     codebaseMap: false,
     preferences: "active-only",
+    tools: TOOLS_PLANNING,
     artifacts: {
       // Phase 3 migration (#4782): manifest matches today's actual
       // buildRunUatPrompt inlining. Prior phase-1 entry listed
@@ -456,6 +536,7 @@ export const UNIT_MANIFESTS: Record<UnitType, UnitContextManifest> = {
     memory: "critical-only",
     codebaseMap: false,
     preferences: "active-only",
+    tools: TOOLS_PLANNING,
     artifacts: {
       inline: ["slice-plan", "prior-task-summaries"],
       excerpt: [],
@@ -469,6 +550,7 @@ export const UNIT_MANIFESTS: Record<UnitType, UnitContextManifest> = {
     memory: "prompt-relevant",
     codebaseMap: true,
     preferences: "active-only",
+    tools: TOOLS_DOCS,
     artifacts: {
       inline: ["project", "requirements", "decisions", "templates"],
       excerpt: [],

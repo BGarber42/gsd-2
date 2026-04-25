@@ -187,6 +187,61 @@ test("#4924: no computed id appears in both artifacts.computed AND prepend (mutu
   }
 });
 
+// ─── Tools-policy invariants (#4934) ─────────────────────────────────────
+
+test("#4934: every manifest declares a tools policy", () => {
+  for (const [unitType, manifest] of Object.entries(UNIT_MANIFESTS)) {
+    const policy = (manifest as { tools?: { mode?: string } }).tools;
+    assert.ok(
+      policy && typeof policy.mode === "string",
+      `manifest "${unitType}" is missing a tools policy — required to fail loud rather than default to "all" silently`,
+    );
+  }
+});
+
+test("#4934: tools.mode is one of the four declared policies", () => {
+  const validModes = new Set(["all", "read-only", "planning", "docs"]);
+  for (const [unitType, manifest] of Object.entries(UNIT_MANIFESTS)) {
+    const mode = (manifest as { tools: { mode: string } }).tools.mode;
+    assert.ok(
+      validModes.has(mode),
+      `manifest "${unitType}" has invalid tools.mode "${mode}" — must be one of ${[...validModes].join(", ")}`,
+    );
+  }
+});
+
+test('#4934: only execute-task and reactive-execute may use tools.mode "all" (full source-tree write access)', () => {
+  const allowedAllUnits = new Set(["execute-task", "reactive-execute"]);
+  for (const [unitType, manifest] of Object.entries(UNIT_MANIFESTS)) {
+    const mode = (manifest as { tools: { mode: string } }).tools.mode;
+    if (mode === "all") {
+      assert.ok(
+        allowedAllUnits.has(unitType),
+        `manifest "${unitType}" declares tools.mode = "all" but is not on the execute-track. ` +
+        'Only execute-task and reactive-execute should have full source write access; ' +
+        'planning/discuss/research units must use "planning" (or "docs" for rewrite-docs).',
+      );
+    }
+  }
+});
+
+test('#4934: tools.mode "docs" requires a non-empty allowedPathGlobs array', () => {
+  for (const [unitType, manifest] of Object.entries(UNIT_MANIFESTS)) {
+    const tools = (manifest as { tools: { mode: string; allowedPathGlobs?: readonly string[] } }).tools;
+    if (tools.mode !== "docs") continue;
+    assert.ok(
+      Array.isArray(tools.allowedPathGlobs) && tools.allowedPathGlobs.length > 0,
+      `manifest "${unitType}" has docs policy but no allowedPathGlobs — explicit allow-set is required so the enforcement layer doesn't fall back to a hardcoded default`,
+    );
+    for (const g of tools.allowedPathGlobs!) {
+      assert.ok(
+        typeof g === "string" && g.length > 0,
+        `manifest "${unitType}" has empty/invalid allowedPathGlobs entry: ${JSON.stringify(g)}`,
+      );
+    }
+  }
+});
+
 // ─── Budget floor: run-uat + gate-evaluate hit the smallest budget tier ──
 
 test("#4782 phase 2: run-uat and gate-evaluate use the smallest budget tier", () => {
