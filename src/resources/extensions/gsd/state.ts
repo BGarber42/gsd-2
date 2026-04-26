@@ -114,6 +114,48 @@ export function isGhostMilestone(basePath: string, mid: string): boolean {
   return !context && !draft && !roadmap && !summary;
 }
 
+/**
+ * A "reusable ghost" milestone is an orphaned filesystem stub that is safe
+ * to reclaim as the next milestone ID.
+ *
+ * Stricter than `isGhostMilestone`: returns true ONLY when ALL of the
+ * following hold:
+ *   1. No DB row exists for `mid` (any status, including "queued") — a DB row
+ *      means the milestone was intentionally registered by
+ *      `gsd_milestone_generate_id` and may have an in-flight discuss flow.
+ *      Reusing it would collide with that flow. (#4996 race window)
+ *   2. No worktree directory exists at `gsdRoot/worktrees/{mid}` — a worktree
+ *      means the milestone is legitimately in-flight.
+ *   3. No content files exist (CONTEXT, CONTEXT-DRAFT, ROADMAP, SUMMARY) —
+ *      any content means the discuss flow already ran.
+ *
+ * The looser `isGhostMilestone` also classifies queued-row-without-content as
+ * a ghost to help state queries filter phantoms. `isReusableGhostMilestone`
+ * intentionally does NOT reclaim those — a queued row is sufficient proof of
+ * a live in-flight ID reservation.
+ *
+ * Used by `nextMilestoneIdReserved` and both MCP ID-generator tools to fill
+ * gaps left by phantom directories before resorting to max+1.
+ */
+export function isReusableGhostMilestone(basePath: string, mid: string): boolean {
+  // Condition 1: no DB row (any status).
+  if (!isDbAvailable()) return false;
+  const dbRow = getMilestone(mid);
+  if (dbRow != null) return false;
+
+  // Condition 2: no worktree.
+  const root = gsdRoot(basePath);
+  const wtPath = join(root, 'worktrees', mid);
+  if (existsSync(wtPath)) return false;
+
+  // Condition 3: no content files.
+  const context = resolveMilestoneFile(basePath, mid, "CONTEXT");
+  const draft   = resolveMilestoneFile(basePath, mid, "CONTEXT-DRAFT");
+  const roadmap = resolveMilestoneFile(basePath, mid, "ROADMAP");
+  const summary = resolveMilestoneFile(basePath, mid, "SUMMARY");
+  return !context && !draft && !roadmap && !summary;
+}
+
 // ─── Query Functions ───────────────────────────────────────────────────────
 
 /**

@@ -14,6 +14,7 @@ It checks:
 - Completion state consistency
 - Git worktree health (worktree and branch modes only — skipped in none mode)
 - Stale lock files and orphaned runtime records
+- Disk-only orphan milestone stub directories
 
 ## Common Issues
 
@@ -139,6 +140,14 @@ rm -rf "$(dirname .gsd)/.gsd.lock"
 **Fix:**
 - Run `/gsd doctor fix` to rewrite the stale milestone metadata automatically when the fallback is obvious.
 - If GSD still blocks, recreate the missing branch or update your git preferences so `git.main_branch` points at a real branch.
+
+### `/gsd doctor` reports `orphan_milestone_dir`
+
+**Symptoms:** `/gsd doctor` shows a warning like `Orphan milestone directory: M003` with issue code `orphan_milestone_dir`.
+
+**What it means:** `.gsd/milestones/<MID>/` exists on disk, but GSD cannot find a DB milestone row, a matching `.gsd/worktrees/<MID>/` worktree, or any milestone content files. These disk-only stub directories can be left behind by interrupted or stale forward references and can skew the next milestone ID that GSD generates.
+
+**Fix:** Run `/gsd doctor fix` to remove the orphan milestone stub directory automatically. The auto-fix only targets disk-only stubs with no DB row, no worktree, and no content files; populated milestone directories and in-flight worktree-only milestones are not removed.
 
 ### Transient `EBUSY` / `EPERM` / `EACCES` while writing `.gsd/` files
 
