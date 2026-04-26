@@ -93,4 +93,20 @@ describe('register-hooks session_before_compact (#3696)', () => {
       'session_before_compact should not check isAutoPaused',
     );
   });
+
+  test('session_before_compact does not gate checkpointing to executing phase (#4258)', () => {
+    const compactIdx = registerHooksSrc.indexOf('session_before_compact');
+    assert.ok(compactIdx > -1, 'session_before_compact hook should exist');
+
+    const preCheckpointSection = registerHooksSrc.slice(
+      compactIdx,
+      registerHooksSrc.indexOf('const sliceDir', compactIdx),
+    );
+
+    const normalized = preCheckpointSection.replace(/\/\/.*$/gm, '');
+    assert.ok(
+      !/if\s*\(\s*state\.phase\s*!==\s*['"]executing['"]\s*\)\s*\{?\s*return\b/.test(normalized),
+      'session_before_compact should not early-return on non-executing phases',
+    );
+  });
 });

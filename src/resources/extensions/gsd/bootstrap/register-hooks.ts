@@ -207,7 +207,7 @@ export function registerHooks(
     const { ensureDbOpen } = await import("./dynamic-tools.js");
     await ensureDbOpen();
     const state = await deriveState(basePath);
-    if (!state.activeMilestone || !state.activeSlice || !state.activeTask) return;
+    if (!state.activeMilestone || !state.activeSlice) return;
     // Write checkpoint for ALL phases, not just "executing" — discuss, research,
     // and planning also carry in-memory state (user answers, gate verification)
     // that would be lost on compaction (#4258).
@@ -222,21 +222,31 @@ export function registerHooks(
     if (await loadFile(legacyContinue)) return;
 
     const continuePath = join(sliceDir, `${state.activeSlice.id}-CONTINUE.md`);
+    const taskId = state.activeTask?.id ?? "none";
+    const taskTitle = state.activeTask?.title ?? "";
+    const phaseLabel = state.phase.replace(/-/g, " ");
+
     await saveFile(continuePath, formatContinue({
       frontmatter: {
         milestone: state.activeMilestone.id,
         slice: state.activeSlice.id,
-        task: state.activeTask.id,
+        task: taskId,
         step: 0,
         totalSteps: 0,
         status: "compacted" as const,
         savedAt: new Date().toISOString(),
       },
-      completedWork: `Task ${state.activeTask.id} (${state.activeTask.title}) was in progress when compaction occurred.`,
-      remainingWork: "Check the task plan for remaining steps.",
+      completedWork: state.activeTask
+        ? `Task ${taskId} (${taskTitle}) was in progress when compaction occurred.`
+        : `Slice ${state.activeSlice.id} was in ${phaseLabel} phase when compaction occurred.`,
+      remainingWork: state.activeTask
+        ? "Check the task plan for remaining steps."
+        : "Continue this slice from the latest planning/research/discussion artifacts.",
       decisions: "Check task summary files for prior decisions.",
       context: "Session was auto-compacted by Pi. Resume with /gsd.",
-      nextAction: `Resume task ${state.activeTask.id}: ${state.activeTask.title}.`,
+      nextAction: state.activeTask
+        ? `Resume task ${taskId}: ${taskTitle}.`
+        : `Resume ${phaseLabel} work for slice ${state.activeSlice.id}.`,
     }));
   });
 
