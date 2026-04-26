@@ -27,6 +27,15 @@ function userMsg(text: string, opts: { cacheBreakpoint?: boolean } = {}): Messag
 	} as Message;
 }
 
+function userMsgArray(text: string, opts: { cacheBreakpoint?: boolean } = {}): Message {
+	return {
+		role: "user",
+		content: [{ type: "text", text }],
+		timestamp: 0,
+		...(opts.cacheBreakpoint ? { cacheBreakpoint: true } : {}),
+	} as Message;
+}
+
 function assistantMsg(text: string): Message {
 	return {
 		role: "assistant",
@@ -90,6 +99,20 @@ describe("convertMessages — cache breakpoints (#5027)", () => {
 		);
 		assert.ok(compactionIdx >= 0, "compaction summary should be in the params");
 		assert.equal(hasCacheControl(result, compactionIdx), true, "compaction boundary gets a breakpoint");
+		assert.equal(hasCacheControl(result, result.length - 1), true, "last msg still gets the volatile-suffix anchor");
+	});
+
+	test("array-backed user cacheBreakpoint message: boundary and last user get breakpoints", () => {
+		const result = convertMessages(
+			[
+				userMsgArray("[COMPACTION SUMMARY]", { cacheBreakpoint: true }),
+				userMsg("post-compaction turn"),
+			],
+			model,
+			false,
+			cacheControl,
+		);
+		assert.equal(hasCacheControl(result, 0), true, "array-backed compaction boundary gets a breakpoint");
 		assert.equal(hasCacheControl(result, result.length - 1), true, "last msg still gets the volatile-suffix anchor");
 	});
 
@@ -195,6 +218,33 @@ describe("buildParams — 4-breakpoint limit safety in OAuth + boundary scenario
 		assert.ok(count <= 4, `must stay under Anthropic's 4-breakpoint limit, got ${count}`);
 		// system(1, the user's prompt — Claude Code header skipped) + boundary(1) + last(1) = 3.
 		assert.equal(count, 3);
+	});
+
+	test("OAuth + system prompt + tools + boundary + last user: ≤4 breakpoints", () => {
+		const ctx: Context = {
+			messages: [
+				userMsg("[COMPACTION SUMMARY]", { cacheBreakpoint: true }),
+				userMsg("post-compaction turn"),
+			],
+			systemPrompt: "You are a helpful coding assistant.",
+			tools: [
+				({
+					name: "Read",
+					description: "Read a file from disk.",
+					parameters: {
+						type: "object" as const,
+						properties: {
+							path: { type: "string" },
+						},
+						required: ["path"],
+					},
+				}) as any,
+			],
+		} as Context;
+		const params = buildParams(buildParamsModel, ctx, true) as any;
+		const count = countBreakpoints(params);
+		assert.ok(count <= 4, `must stay under Anthropic's 4-breakpoint limit, got ${count}`);
+		assert.equal(count, 4);
 	});
 
 	test("OAuth header WITHOUT user systemPrompt still cache-marks the header", () => {
