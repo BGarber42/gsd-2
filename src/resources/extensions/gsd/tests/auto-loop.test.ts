@@ -1,5 +1,8 @@
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   resolveAgentEnd,
@@ -734,7 +737,7 @@ function makeLoopSession(overrides?: Partial<Record<string, unknown>>) {
     verbose: false,
     stepMode: false,
     paused: false,
-    basePath: "/tmp/project",
+    basePath: mkdtempSync(join(tmpdir(), "gsd-auto-loop-")),
     originalBasePath: "",
     currentMilestoneId: "M001",
     currentUnit: null,
