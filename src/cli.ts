@@ -28,7 +28,7 @@ import {
 import { stopWebMode } from './web-mode.js'
 import { getProjectSessionsDir } from './project-sessions.js'
 import { markStartup, printStartupTimings } from './startup-timings.js'
-import { applyRtkProcessEnv, GSD_RTK_DISABLED_ENV } from './rtk-shared.js'
+import { applyRtkProcessEnv, GSD_RTK_DISABLED_ENV, isTruthy } from './rtk-shared.js'
 import type { EnsureRtkResult } from './rtk.js'
 
 type PiCodingAgentModule = typeof import('@gsd/pi-coding-agent')
@@ -162,21 +162,23 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
 let rtkBootstrapPromise: Promise<void> | undefined
 async function doRtkBootstrap(): Promise<void> {
   let rtkStatus: EnsureRtkResult | undefined
+  let rtkDisabled = isTruthy(process.env[GSD_RTK_DISABLED_ENV])
 
   // RTK is opt-in via experimental.rtk preference. Default: disabled.
   // Honor GSD_RTK_DISABLED if already explicitly set in the environment
   // (env var takes precedence over preferences for manual override).
-  if (!process.env[GSD_RTK_DISABLED_ENV]) {
+  if (!rtkDisabled) {
     const { loadEffectiveGSDPreferences } = await import('./resources/extensions/gsd/preferences.js')
     const prefs = loadEffectiveGSDPreferences()
     const rtkEnabled = prefs?.preferences.experimental?.rtk === true
     if (!rtkEnabled) {
       process.env[GSD_RTK_DISABLED_ENV] = '1'
+      rtkDisabled = true
     }
   }
   markStartup('rtkPreferenceCheck')
 
-  if (process.env[GSD_RTK_DISABLED_ENV]) {
+  if (rtkDisabled) {
     applyRtkProcessEnv(process.env)
     rtkStatus = {
       enabled: false,

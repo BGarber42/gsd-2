@@ -68,7 +68,7 @@ test("session_start handler guards initHealthWidget with !isAutoActive()", () =>
   );
 });
 
-test("session_switch handler suppresses gsd-health when isAutoActive()", () => {
+test("session_switch handler toggles gsd-health for auto and non-auto sessions", () => {
   const sessionSwitchIdx = HOOKS_SOURCE.indexOf('"session_switch"');
   assert.ok(sessionSwitchIdx > -1, "session_switch handler must exist");
 
@@ -82,12 +82,24 @@ test("session_switch handler suppresses gsd-health when isAutoActive()", () => {
     "session_switch handler must call isAutoActive()",
   );
   assert.ok(
+    sessionSwitchBody.includes("initHealthWidget"),
+    "session_switch handler must initialize gsd-health when auto is inactive",
+  );
+  assert.ok(
     sessionSwitchBody.includes('setWidget("gsd-health", undefined)'),
     "session_switch handler must call setWidget(\"gsd-health\", undefined) when auto is active",
   );
   assert.ok(
     !sessionSwitchBody.includes("setFooter"),
     "session_switch handler must NOT call setFooter",
+  );
+
+  const inactiveGuardIdx = sessionSwitchBody.indexOf("!isAutoActive()");
+  const healthIdx = sessionSwitchBody.indexOf("initHealthWidget");
+  const hideIdx = sessionSwitchBody.indexOf('setWidget("gsd-health", undefined)');
+  assert.ok(
+    inactiveGuardIdx > -1 && inactiveGuardIdx < healthIdx && healthIdx < hideIdx,
+    "session_switch must initialize before the auto-active hide branch",
   );
 });
 

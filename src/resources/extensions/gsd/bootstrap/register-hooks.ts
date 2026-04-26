@@ -138,7 +138,10 @@ export function registerHooks(
       prepareWorkflowMcpForProject(ctx, process.cwd());
     }
     await loadToolApiKeysForSession();
-    if (isAutoActive()) {
+    if (!isAutoActive()) {
+      const { initHealthWidget } = await import("../health-widget.js");
+      initHealthWidget(ctx);
+    } else {
       ctx.ui.setWidget("gsd-health", undefined);
     }
   });
