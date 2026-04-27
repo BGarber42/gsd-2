@@ -58,7 +58,7 @@ export async function dispatchDirectPhase(
   // exists. Without this, /gsd dispatch invoked from the project root would
   // build prompts and create a session anchored to the project root even
   // though the milestone's actual code lives in the worktree.
-  base = resolveCanonicalMilestoneRoot(base, mid);
+  const dispatchBase = resolveCanonicalMilestoneRoot(base, mid);
 
   const normalized = phase.toLowerCase();
   let unitType: string;
@@ -80,7 +80,7 @@ export async function dispatchDirectPhase(
 
         // When require_slice_discussion is enabled, pause auto-mode before
         // each new slice so the user can discuss requirements first (#789).
-        const sliceContextFile = resolveSliceFile(base, mid, sid, "CONTEXT");
+        const sliceContextFile = resolveSliceFile(dispatchBase, mid, sid, "CONTEXT");
         const requireDiscussion = loadEffectiveGSDPreferences()?.preferences?.phases?.require_slice_discussion;
         if (requireDiscussion && !sliceContextFile) {
           ctx.ui.notify(
@@ -93,11 +93,11 @@ export async function dispatchDirectPhase(
 
         unitType = "research-slice";
         unitId = `${mid}/${sid}`;
-        prompt = await buildResearchSlicePrompt(mid, midTitle, sid, sTitle, base);
+        prompt = await buildResearchSlicePrompt(mid, midTitle, sid, sTitle, dispatchBase);
       } else {
         unitType = "research-milestone";
         unitId = mid;
-        prompt = await buildResearchMilestonePrompt(mid, midTitle, base);
+        prompt = await buildResearchMilestonePrompt(mid, midTitle, dispatchBase);
       }
       break;
     }
@@ -116,7 +116,7 @@ export async function dispatchDirectPhase(
         unitType = "plan-slice";
         unitId = `${mid}/${sid}`;
         prompt = await buildPlanSlicePrompt(
-          mid, midTitle, sid, sTitle, base, undefined,
+          mid, midTitle, sid, sTitle, dispatchBase, undefined,
           {
             sessionContextWindow: ctx.model?.contextWindow,
             modelRegistry: ctx.modelRegistry as MinimalModelRegistry | undefined,
@@ -125,7 +125,7 @@ export async function dispatchDirectPhase(
       } else {
         unitType = "plan-milestone";
         unitId = mid;
-        prompt = await buildPlanMilestonePrompt(mid, midTitle, base);
+        prompt = await buildPlanMilestonePrompt(mid, midTitle, dispatchBase);
       }
       break;
     }
@@ -147,7 +147,7 @@ export async function dispatchDirectPhase(
       unitType = "execute-task";
       unitId = `${mid}/${sid}/${tid}`;
       prompt = await buildExecuteTaskPrompt(
-        mid, sid, sTitle, tid, tTitle, base,
+        mid, sid, sTitle, tid, tTitle, dispatchBase,
         {
           sessionContextWindow: ctx.model?.contextWindow,
           modelRegistry: ctx.modelRegistry as MinimalModelRegistry | undefined,
@@ -169,11 +169,11 @@ export async function dispatchDirectPhase(
         }
         unitType = "complete-slice";
         unitId = `${mid}/${sid}`;
-        prompt = await buildCompleteSlicePrompt(mid, midTitle, sid, sTitle, base);
+        prompt = await buildCompleteSlicePrompt(mid, midTitle, sid, sTitle, dispatchBase);
       } else {
         unitType = "complete-milestone";
         unitId = mid;
-        prompt = await buildCompleteMilestonePrompt(mid, midTitle, base);
+        prompt = await buildCompleteMilestonePrompt(mid, midTitle, dispatchBase);
       }
       break;
     }
@@ -187,7 +187,7 @@ export async function dispatchDirectPhase(
       }
       if (completedSliceIds.length === 0) {
         // File-based fallback: parse roadmap checkboxes
-        const roadmapPath = resolveMilestoneFile(base, mid, "ROADMAP");
+        const roadmapPath = resolveMilestoneFile(dispatchBase, mid, "ROADMAP");
         if (roadmapPath) {
           const roadmapContent = await loadFile(roadmapPath);
           if (roadmapContent) {
@@ -202,7 +202,7 @@ export async function dispatchDirectPhase(
       const completedSliceId = completedSliceIds[completedSliceIds.length - 1];
       unitType = "reassess-roadmap";
       unitId = `${mid}/${completedSliceId}`;
-      prompt = await buildReassessRoadmapPrompt(mid, midTitle, completedSliceId, base);
+      prompt = await buildReassessRoadmapPrompt(mid, midTitle, completedSliceId, dispatchBase);
       break;
     }
 
@@ -218,7 +218,7 @@ export async function dispatchDirectPhase(
       }
       if (uatCompletedSliceIds.length === 0) {
         // File-based fallback: parse roadmap checkboxes
-        const roadmapPath = resolveMilestoneFile(base, mid, "ROADMAP");
+        const roadmapPath = resolveMilestoneFile(dispatchBase, mid, "ROADMAP");
         if (roadmapPath) {
           const roadmapContent = await loadFile(roadmapPath);
           if (roadmapContent) {
@@ -231,7 +231,7 @@ export async function dispatchDirectPhase(
         return;
       }
       const sid = uatCompletedSliceIds[uatCompletedSliceIds.length - 1];
-      const uatFile = resolveSliceFile(base, mid, sid, "UAT");
+      const uatFile = resolveSliceFile(dispatchBase, mid, sid, "UAT");
       if (!uatFile) {
         ctx.ui.notify("Cannot dispatch run-uat: no UAT file found.", "warning");
         return;
@@ -241,10 +241,10 @@ export async function dispatchDirectPhase(
         ctx.ui.notify("Cannot dispatch run-uat: UAT file is empty.", "warning");
         return;
       }
-      const uatPath = relSliceFile(base, mid, sid, "UAT");
+      const uatPath = relSliceFile(dispatchBase, mid, sid, "UAT");
       unitType = "run-uat";
       unitId = `${mid}/${sid}`;
-      prompt = await buildRunUatPrompt(mid, sid, uatPath, uatContent, base);
+      prompt = await buildRunUatPrompt(mid, sid, uatPath, uatContent, dispatchBase);
       break;
     }
 
@@ -258,7 +258,7 @@ export async function dispatchDirectPhase(
       }
       unitType = "replan-slice";
       unitId = `${mid}/${sid}`;
-      prompt = await buildReplanSlicePrompt(mid, midTitle, sid, sTitle, base);
+      prompt = await buildReplanSlicePrompt(mid, midTitle, sid, sTitle, dispatchBase);
       break;
     }
 
@@ -288,26 +288,38 @@ export async function dispatchDirectPhase(
 
   ctx.ui.notify(`Dispatching ${unitType} for ${unitId}...`, "info");
 
-  // Ensure cwd matches base BEFORE newSession() captures it. Synchronous —
-  // no awaits between chdir and newSession.
-  try {
-    if (process.cwd() !== base) {
-      process.chdir(base);
-    }
-  } catch (err) {
-    const msg = `Failed to chdir before direct-dispatch newSession (basePath: ${base}): ${err instanceof Error ? err.message : String(err)}`;
-    logWarning("engine", msg, { file: "auto-direct-dispatch.ts", basePath: base, error: err instanceof Error ? err.message : String(err) });
-    ctx.ui.notify(`${msg}. Cancelling dispatch to avoid running in the wrong directory.`, "error");
-    return;
-  }
+  const originalCwd = process.cwd();
 
-  const result = await ctx.newSession();
-  if (result.cancelled) {
-    ctx.ui.notify("Session creation cancelled.", "warning");
-    return;
+  try {
+    // Ensure cwd matches dispatchBase BEFORE newSession() captures it. Synchronous —
+    // no awaits between chdir and newSession.
+    try {
+      if (process.cwd() !== dispatchBase) {
+        process.chdir(dispatchBase);
+      }
+    } catch (err) {
+      const msg = `Failed to chdir before direct-dispatch newSession (basePath: ${dispatchBase}): ${err instanceof Error ? err.message : String(err)}`;
+      logWarning("engine", msg, { file: "auto-direct-dispatch.ts", basePath: dispatchBase, error: err instanceof Error ? err.message : String(err) });
+      ctx.ui.notify(`${msg}. Cancelling dispatch to avoid running in the wrong directory.`, "error");
+      return;
+    }
+
+    const result = await ctx.newSession();
+    if (result.cancelled) {
+      ctx.ui.notify("Session creation cancelled.", "warning");
+      return;
+    }
+    pi.sendMessage(
+      { customType: "gsd-dispatch", content: prompt, display: false },
+      { triggerTurn: true },
+    );
+  } finally {
+    try {
+      if (process.cwd() !== originalCwd) {
+        process.chdir(originalCwd);
+      }
+    } catch (err) {
+      logWarning("engine", `Failed to restore cwd after direct dispatch: ${err instanceof Error ? err.message : String(err)}`, { file: "auto-direct-dispatch.ts", basePath: originalCwd });
+    }
   }
-  pi.sendMessage(
-    { customType: "gsd-dispatch", content: prompt, display: false },
-    { triggerTurn: true },
-  );
 }

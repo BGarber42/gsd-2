@@ -2625,6 +2625,7 @@ export async function buildGateEvaluatePrompt(
 
   const subagentSections: string[] = [];
   const gateListLines: string[] = [];
+  const normalizedBase = base.replaceAll("\\", "/");
 
   for (const def of gateDefs) {
     gateListLines.push(`- **${def.id}**: ${def.question}`);
@@ -2632,7 +2633,7 @@ export async function buildGateEvaluatePrompt(
     const subPrompt = [
       `You are evaluating quality gate **${def.id}** for slice ${sid} (${sTitle}).`,
       "",
-      `**Working directory:** \`${base}\`. All file reads, writes, and shell commands MUST operate relative to this directory. Do NOT \`cd\` to any other directory.`,
+      `**Working directory:** \`${normalizedBase}\`. All file reads, writes, and shell commands MUST operate relative to this directory. Do NOT \`cd\` to any other directory.`,
       "",
       `## Question: ${def.question}`,
       "",

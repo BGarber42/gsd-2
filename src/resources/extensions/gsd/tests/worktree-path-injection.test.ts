@@ -4,11 +4,16 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+const ownsGsdHome = process.env.GSD_HOME_TEST_OVERRIDE === undefined;
 const previousGsdHome = process.env.GSD_HOME;
+const synthesizedGsdHome = join(tmpdir(), `gsd-test-home-${process.pid}-${Date.now()}`);
 process.env.GSD_HOME = process.env.GSD_HOME_TEST_OVERRIDE
-  ?? join(tmpdir(), `gsd-test-home-${process.pid}-${Date.now()}`);
+  ?? synthesizedGsdHome;
 
 after(() => {
+  if (ownsGsdHome) {
+    rmSync(synthesizedGsdHome, { recursive: true, force: true });
+  }
   if (previousGsdHome === undefined) {
     delete process.env.GSD_HOME;
   } else {
@@ -60,11 +65,17 @@ function makeLiveMilestoneWorktree(base: string, mid = "M001"): string {
 }
 
 async function waitFor(condition: () => boolean, label: string): Promise<void> {
-  for (let i = 0; i < 100; i++) {
+  const rawTimeout = process.env.READABLE_WAIT_TIMEOUT_MS;
+  const parsedTimeout = rawTimeout === undefined ? NaN : Number.parseInt(rawTimeout, 10);
+  const timeoutMs = Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 1000;
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
     if (condition()) return;
-    await new Promise((resolve) => setTimeout(resolve, 1));
+    await new Promise((resolve) => setTimeout(resolve, 5));
   }
-  assert.fail(`Timed out waiting for ${label}`);
+  if (condition()) return;
+  assert.fail(`Timed out waiting for ${label} after ${timeoutMs}ms`);
 }
 
 test("runUnit changes cwd to basePath before creating a new session", async (t) => {
@@ -191,6 +202,7 @@ test("direct dispatch redirects to the canonical milestone worktree before newSe
   await dispatchDirectPhase(ctx, pi, "research-milestone", base);
 
   assert.equal(cwdAtNewSession, worktreeRoot);
+  assert.equal(process.cwd(), drifted);
   assert.ok(sentPrompt?.includes(worktreeRoot), "prompt should name the canonical worktree root");
 });
 
