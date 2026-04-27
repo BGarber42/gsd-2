@@ -106,7 +106,7 @@ describe("#4243 — abort() must run before _disconnectFromAgent()", () => {
 		);
 	});
 
-	it("newSession() waits instead of aborting while agent_end handlers are still running", async () => {
+	it("newSession() waits instead of aborting while agent_end processing is still streaming", async () => {
 		const session = await createSession();
 		const order: string[] = [];
 		let releaseIdle!: () => void;
@@ -115,6 +115,7 @@ describe("#4243 — abort() must run before _disconnectFromAgent()", () => {
 		});
 
 		(session as any)._processingAgentEnd = true;
+		(session as any).agent.state.isStreaming = true;
 		(session as any).agent.waitForIdle = () => {
 			order.push("waitForIdle");
 			return idle;
@@ -129,12 +130,38 @@ describe("#4243 — abort() must run before _disconnectFromAgent()", () => {
 		};
 
 		const pendingNewSession = session.newSession();
+		await Promise.resolve();
 		assert.deepEqual(order, ["waitForIdle"]);
+		assert.equal(order.includes("abort"), false);
 
 		releaseIdle();
 		const ok = await pendingNewSession;
 		assert.equal(ok, true);
 		assert.deepEqual(order, ["waitForIdle", "_disconnectFromAgent"]);
+		assert.equal(order.includes("abort"), false);
+	});
+
+	it("newSession() skips waitForIdle during agent_end processing once already idle", async () => {
+		const session = await createSession();
+		const order: string[] = [];
+
+		(session as any)._processingAgentEnd = true;
+		(session as any).agent.state.isStreaming = false;
+		(session as any).agent.waitForIdle = async () => {
+			order.push("waitForIdle");
+		};
+		(session as any).abort = async () => {
+			order.push("abort");
+		};
+		const originalDisconnect = (session as any)._disconnectFromAgent.bind(session);
+		(session as any)._disconnectFromAgent = () => {
+			order.push("_disconnectFromAgent");
+			originalDisconnect();
+		};
+
+		const ok = await session.newSession();
+		assert.equal(ok, true);
+		assert.deepEqual(order, ["_disconnectFromAgent"]);
 		assert.equal(order.includes("abort"), false);
 	});
 
@@ -205,7 +232,7 @@ describe("#4243 — abort() must run before _disconnectFromAgent()", () => {
 		assert.deepEqual(restoredText, ["persisted prompt", "persisted response"]);
 	});
 
-	it("switchSession() waits instead of aborting while agent_end handlers are still running", async () => {
+	it("switchSession() waits instead of aborting while agent_end processing is still streaming", async () => {
 		const session = await createSession({ persistSessions: true });
 		const previousSessionFile = session.sessionFile;
 		assert.ok(previousSessionFile, "need a persisted session file");
@@ -244,6 +271,7 @@ describe("#4243 — abort() must run before _disconnectFromAgent()", () => {
 		});
 
 		(session as any)._processingAgentEnd = true;
+		(session as any).agent.state.isStreaming = true;
 		(session as any).agent.waitForIdle = () => {
 			order.push("waitForIdle");
 			return idle;
@@ -258,7 +286,9 @@ describe("#4243 — abort() must run before _disconnectFromAgent()", () => {
 		};
 
 		const pendingSwitch = session.switchSession(previousSessionFile);
+		await Promise.resolve();
 		assert.deepEqual(order, ["waitForIdle"]);
+		assert.equal(order.includes("abort"), false);
 		assert.equal(session.sessionFile, activeSessionFile);
 		assert.deepEqual(session.messages, []);
 

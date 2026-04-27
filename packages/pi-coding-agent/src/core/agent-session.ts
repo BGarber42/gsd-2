@@ -1578,7 +1578,12 @@ export class AgentSession {
 
 	private async _settleCurrentTurnForSessionTransition(): Promise<void> {
 		if (this._processingAgentEnd) {
-			await this.agent.waitForIdle();
+			// RPC waitForIdle() resolves on the next agent_end event. During
+			// agent_end handlers the current event already fired, so skip the wait
+			// once the agent is already idle.
+			if (this.isStreaming) {
+				await this.agent.waitForIdle();
+			}
 			return;
 		}
 
