@@ -1304,6 +1304,39 @@ export async function buildWorkflowPreferencesPrompt(
 }
 
 /**
+ * Build a prompt for the research-project (parallel) unit type (Phase 11 — deep mode).
+ * Orchestrator that spawns 4 parallel Task() calls covering stack, features,
+ * architecture, and pitfalls. Each subagent writes its findings to .gsd/research/.
+ * Fires after research-decision marker says "research" and project research files
+ * are missing. Skipped entirely if user picked "skip".
+ */
+export async function buildResearchProjectPrompt(
+  base: string,
+  structuredQuestionsAvailable = "false",
+): Promise<string> {
+  return loadPrompt("guided-research-project", {
+    workingDirectory: base,
+    structuredQuestionsAvailable,
+  });
+}
+
+/**
+ * Build a prompt for the research-decision unit type (Phase 11 — deep mode).
+ * Fixed-question stage: asks "research first or skip?" via ask_user_questions
+ * and writes .gsd/runtime/research-decision.json. Fires after discuss-requirements
+ * and before research-project-parallel.
+ */
+export async function buildResearchDecisionPrompt(
+  base: string,
+  structuredQuestionsAvailable = "false",
+): Promise<string> {
+  return loadPrompt("guided-research-decision", {
+    workingDirectory: base,
+    structuredQuestionsAvailable,
+  });
+}
+
+/**
  * Build a prompt for the discuss-project unit type (Phase 11 — deep mode).
  * Project-level interview: produces .gsd/PROJECT.md.
  * Fires before any milestone-level work when planning_depth === "deep" and

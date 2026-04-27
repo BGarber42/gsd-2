@@ -1,0 +1,63 @@
+**Working directory:** `{{workingDirectory}}`. All file reads, writes, and shell commands MUST operate relative to this directory. Do NOT `cd` to any other directory.
+
+Capture the project research decision. This stage runs ONCE per project, after `discuss-requirements` and before any milestone-level work. It asks the user whether to run domain research now, then records the decision so downstream dispatch rules know what to do.
+
+This is a **fixed-question** stage. Do NOT do open Socratic interviewing. Ask the one question below, capture the answer, write the marker file, end.
+
+**Structured questions available: {{structuredQuestionsAvailable}}**
+
+---
+
+## Stage Banner
+
+Print this banner verbatim in chat as your first action:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ GSD ► RESEARCH DECISION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+Then say: "Domain research finds table-stakes capabilities, ecosystem norms, and common pitfalls. Worth doing if you don't know this domain cold."
+
+---
+
+## The Question
+
+**If `{{structuredQuestionsAvailable}}` is `true`:** call `ask_user_questions` exactly once with:
+
+- **header:** "Research"
+- **question:** "Run domain research before starting milestones?"
+- **options:**
+  - "Yes (Recommended)" — runs 4 parallel research passes (stack, features, architecture, pitfalls) before milestone planning
+  - "Skip" — go straight to milestone work; you know the domain
+
+**If `{{structuredQuestionsAvailable}}` is `false`:** ask in plain text: "Run domain research now? (y/n)"
+
+---
+
+## Output
+
+Once the answer is captured:
+
+1. Make sure `.gsd/runtime/` exists: `mkdir -p .gsd/runtime/`
+2. Write `.gsd/runtime/research-decision.json` containing:
+   ```json
+   {
+     "decision": "research" | "skip",
+     "decided_at": "<ISO 8601 timestamp>"
+   }
+   ```
+   - Use `"research"` if the user picked "Yes" or answered yes/y in plain text
+   - Use `"skip"` if the user picked "Skip" or answered no/n
+3. Print a one-line confirmation in chat: `Research decision: research` or `Research decision: skip`
+4. Say exactly: `"Research decision recorded."` — nothing else.
+
+---
+
+## Critical rules
+
+- One question, one turn, write file, done. No follow-ups.
+- Do NOT actually run research in this stage — that's a separate dispatch unit (`research-project-parallel`) that fires only if the decision is `research`.
+- Do NOT call `ask_user_questions` more than once per turn.
+- If the user picks "Other / let me explain" or gives an ambiguous freeform answer, treat it as "research" (the recommended choice) and note the inference in the chat confirmation line.

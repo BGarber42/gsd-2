@@ -39,6 +39,8 @@ import {
   buildDiscussMilestonePrompt,
   buildDiscussProjectPrompt,
   buildDiscussRequirementsPrompt,
+  buildResearchDecisionPrompt,
+  buildResearchProjectPrompt,
   buildWorkflowPreferencesPrompt,
   buildResearchMilestonePrompt,
   buildPlanMilestonePrompt,
@@ -548,6 +550,67 @@ export const DISPATCH_RULES: DispatchRule[] = [
         unitType: "discuss-requirements",
         unitId: "REQUIREMENTS",
         prompt: await buildDiscussRequirementsPrompt(basePath, structuredQuestionsAvailable),
+      };
+    },
+  },
+  {
+    // Phase 11 — Deep mode research gate: capture user's research decision.
+    // Fires after discuss-requirements (REQUIREMENTS.md exists) when no decision
+    // marker has been written yet. Asks one yes/no question via ask_user_questions
+    // and writes .gsd/runtime/research-decision.json. Downstream research-project
+    // rule reads the marker to decide whether to fan out 4 parallel research subagents.
+    // Light mode skips entirely.
+    name: "deep: pre-planning (no research decision) → research-decision",
+    match: async ({ state, basePath, prefs, structuredQuestionsAvailable }) => {
+      if (prefs?.planning_depth !== "deep") return null;
+      if (state.phase !== "pre-planning" && state.phase !== "needs-discussion") return null;
+      const requirementsPath = join(gsdRoot(basePath), "REQUIREMENTS.md");
+      if (!existsSync(requirementsPath)) return null; // earlier rule handles
+      const decisionPath = join(gsdRoot(basePath), "runtime", "research-decision.json");
+      if (existsSync(decisionPath)) return null; // already decided — fall through
+      return {
+        action: "dispatch",
+        unitType: "research-decision",
+        unitId: "RESEARCH-DECISION",
+        prompt: await buildResearchDecisionPrompt(basePath, structuredQuestionsAvailable),
+      };
+    },
+  },
+  {
+    // Phase 11 — Deep mode parallel research.
+    // Fires when planning_depth === "deep", REQUIREMENTS.md exists,
+    // research-decision marker says "research", and any of the 4 project
+    // research files is missing. Spawns one orchestrator session that fans
+    // out 4 parallel subagents (stack, features, architecture, pitfalls).
+    // Skipped entirely when user chose "skip" at the research-decision gate.
+    name: "deep: pre-planning (research approved, files missing) → research-project",
+    match: async ({ state, basePath, prefs, structuredQuestionsAvailable }) => {
+      if (prefs?.planning_depth !== "deep") return null;
+      if (state.phase !== "pre-planning" && state.phase !== "needs-discussion") return null;
+      const requirementsPath = join(gsdRoot(basePath), "REQUIREMENTS.md");
+      if (!existsSync(requirementsPath)) return null; // earlier rule handles
+      const decisionPath = join(gsdRoot(basePath), "runtime", "research-decision.json");
+      if (!existsSync(decisionPath)) return null; // research-decision rule handles
+      let decision: string | undefined;
+      try {
+        const cfg = JSON.parse(readFileSync(decisionPath, "utf-8")) as Record<string, unknown>;
+        decision = typeof cfg.decision === "string" ? cfg.decision : undefined;
+      } catch {
+        return null; // malformed marker — leave for research-decision rule to re-ask
+      }
+      if (decision !== "research") return null; // user picked "skip" — fall through
+      const researchDir = join(gsdRoot(basePath), "research");
+      const allFilesExist =
+        existsSync(join(researchDir, "STACK.md")) &&
+        existsSync(join(researchDir, "FEATURES.md")) &&
+        existsSync(join(researchDir, "ARCHITECTURE.md")) &&
+        existsSync(join(researchDir, "PITFALLS.md"));
+      if (allFilesExist) return null; // already done — fall through
+      return {
+        action: "dispatch",
+        unitType: "research-project",
+        unitId: "RESEARCH-PROJECT",
+        prompt: await buildResearchProjectPrompt(basePath, structuredQuestionsAvailable),
       };
     },
   },
