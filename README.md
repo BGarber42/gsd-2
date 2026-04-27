@@ -471,6 +471,7 @@ On first run, GSD launches a branded setup wizard that walks you through LLM pro
 | `/gsd logs`             | Browse activity, debug, and metrics logs                                      |
 | `/gsd export --html`    | Generate HTML report for current or completed milestone                       |
 | `/worktree` (`/wt`)     | Git worktree lifecycle — create, switch, merge, remove                        |
+| `/gsd worktree` (`/gsd wt`) | TUI worktree management — list, merge, clean, remove with safety checks   |
 | `/voice`                | Toggle real-time speech-to-text (macOS, Linux)                                |
 | `/exit`                 | Graceful shutdown — saves session state before exiting                        |
 | `/kill`                 | Kill GSD process immediately                                                  |

@@ -14,7 +14,7 @@ export interface GsdCommandDefinition {
 type CompletionMap = Record<string, readonly GsdCommandDefinition[]>;
 
 export const GSD_COMMAND_DESCRIPTION =
-  "GSD — Get Shit Done: /gsd help|start|templates|next|auto|stop|pause|status|widget|visualize|queue|quick|discuss|capture|triage|dispatch|history|undo|undo-task|reset-slice|rate|skip|export|cleanup|model|mode|prefs|config|keys|hooks|run-hook|skill-health|doctor|debug|logs|forensics|changelog|migrate|remote|steer|knowledge|new-milestone|parallel|cmux|park|unpark|init|setup|onboarding|inspect|extensions|update|fast|mcp|rethink|workflow|codebase|notifications|ship|do|session-report|backlog|pr-branch|add-tests|scan|language";
+  "GSD — Get Shit Done: /gsd help|start|templates|next|auto|stop|pause|status|widget|visualize|queue|quick|discuss|capture|triage|dispatch|history|undo|undo-task|reset-slice|rate|skip|export|cleanup|model|mode|prefs|config|keys|hooks|run-hook|skill-health|doctor|debug|logs|forensics|changelog|migrate|remote|steer|knowledge|new-milestone|parallel|cmux|park|unpark|init|setup|onboarding|inspect|extensions|update|fast|mcp|rethink|workflow|codebase|notifications|ship|do|session-report|backlog|pr-branch|add-tests|scan|language|worktree";
 
 export const TOP_LEVEL_SUBCOMMANDS: readonly GsdCommandDefinition[] = [
   { cmd: "help", desc: "Categorized command reference with descriptions" },
@@ -83,6 +83,7 @@ export const TOP_LEVEL_SUBCOMMANDS: readonly GsdCommandDefinition[] = [
   { cmd: "add-tests", desc: "Generate tests for completed slices" },
   { cmd: "scan", desc: "Rapid codebase assessment — lightweight alternative to full map (--focus tech|arch|quality|concerns|tech+arch)" },
   { cmd: "language", desc: "Set or clear the global response language (e.g. /gsd language Chinese)" },
+  { cmd: "worktree", desc: "Manage worktrees from the TUI (list, merge, clean, remove)" },
 ];
 
 const NESTED_COMPLETIONS: CompletionMap = {
@@ -298,6 +299,12 @@ const NESTED_COMPLETIONS: CompletionMap = {
   language: [
     { cmd: "off",   desc: "Clear the language preference (revert to default)" },
     { cmd: "clear", desc: "Alias for off — clear the language preference" },
+  ],
+  worktree: [
+    { cmd: "list",   desc: "Show all worktrees with status" },
+    { cmd: "merge",  desc: "Merge a worktree into main and clean up" },
+    { cmd: "clean",  desc: "Remove all merged/empty worktrees" },
+    { cmd: "remove", desc: "Remove a worktree (--force to skip safety checks)" },
   ],
 };
 

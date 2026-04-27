@@ -173,7 +173,7 @@ GSD-Task: M001/S01/T01
 
 ## Manual Worktree Management
 
-Use `/worktree` (or `/wt`) for manual worktree operations:
+Use `/worktree` (or `/wt`) for standalone manual worktree operations:
 
 ```
 /worktree create
@@ -181,6 +181,17 @@ Use `/worktree` (or `/wt`) for manual worktree operations:
 /worktree merge
 /worktree remove
 ```
+
+Inside an active GSD TUI session, use `/gsd worktree` (or `/gsd wt`) for worktree commands that report through the session UI:
+
+```
+/gsd worktree list
+/gsd worktree merge [name]
+/gsd worktree clean
+/gsd worktree remove <name> [--force]
+```
+
+`list` shows each worktree's branch, path, diff stats, commit count, and whether it is clean, unmerged, or has uncommitted changes. `merge` brings a worktree back into the detected main branch and removes it afterward; if the worktree has dirty files, GSD tries to auto-commit them before merging. `clean` removes only merged or empty worktrees and keeps anything with pending changes. `remove` refuses to discard unmerged or uncommitted work unless you pass `--force`.
 
 ## Self-Healing
 
