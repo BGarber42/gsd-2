@@ -40,6 +40,29 @@ export async function runUnit(
 ): Promise<UnitResult> {
   debugLog("runUnit", { phase: "start", unitType, unitId });
 
+  // Ensure cwd matches basePath BEFORE newSession() captures it. The new
+  // session reads process.cwd() during construction to anchor its tool
+  // runtime and system prompt; if cwd has drifted (async_bash, background
+  // jobs, prior unit cleanup), the session would otherwise be rooted to
+  // the wrong directory. Must be synchronous — no awaits between chdir
+  // and newSession (#1389, #4762 follow-up).
+  try {
+    if (process.cwd() !== s.basePath) {
+      process.chdir(s.basePath);
+    }
+  } catch (e) {
+    const msg = `Failed to chdir to basePath before newSession (basePath: ${s.basePath}): ${String(e)}`;
+    logWarning("engine", msg, { basePath: s.basePath, error: String(e) });
+    return {
+      status: "cancelled",
+      errorContext: {
+        message: msg,
+        category: "session-failed",
+        isTransient: true,
+      },
+    };
+  }
+
   // ── Session creation with timeout ──
   debugLog("runUnit", { phase: "session-create", unitType, unitId });
 
@@ -119,17 +142,6 @@ export async function runUnit(
   const unitPromise = new Promise<UnitResult>((resolve) => {
     _setCurrentResolve(resolve);
   });
-
-  // Ensure cwd matches basePath before dispatch (#1389).
-  // async_bash and background jobs can drift cwd away from the worktree.
-  // Realigning here prevents commits from landing on the wrong branch.
-  try {
-    if (process.cwd() !== s.basePath) {
-      process.chdir(s.basePath);
-    }
-  } catch (e) {
-    logWarning("engine", "Failed to chdir to basePath before dispatch", { basePath: s.basePath, error: String(e) });
-  }
 
   // ── Provider request-readiness pre-check (#4555) ──
   // Verify the provider can accept requests before dispatching. If the token

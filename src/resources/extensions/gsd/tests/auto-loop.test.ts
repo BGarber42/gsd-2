@@ -63,6 +63,7 @@ function makeMockSession(opts?: {
   const session = {
     active: true,
     verbose: false,
+    basePath: process.cwd(),
     cmdCtx: {
       newSession: (options?: { abortSignal?: AbortSignal }) => {
         opts?.onNewSessionStart?.(session);

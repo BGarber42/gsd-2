@@ -1267,6 +1267,7 @@ export async function buildDiscussMilestonePrompt(
   const discussTemplates = inlineTemplate("context", "Context");
 
   const basePrompt = loadPrompt("guided-discuss-milestone", {
+    workingDirectory: base,
     milestoneId: mid,
     milestoneTitle: midTitle,
     inlinedTemplates: discussTemplates,
@@ -2645,6 +2646,7 @@ export async function buildParallelResearchSlicesPrompt(
   }
 
   return loadPrompt("parallel-research-slices", {
+    workingDirectory: basePath,
     mid,
     midTitle,
     sliceCount: String(slices.length),
@@ -2681,12 +2683,15 @@ export async function buildGateEvaluatePrompt(
 
   const subagentSections: string[] = [];
   const gateListLines: string[] = [];
+  const normalizedBase = base.replaceAll("\\", "/");
 
   for (const def of gateDefs) {
     gateListLines.push(`- **${def.id}**: ${def.question}`);
 
     const subPrompt = [
       `You are evaluating quality gate **${def.id}** for slice ${sid} (${sTitle}).`,
+      "",
+      `**Working directory:** \`${normalizedBase}\`. All file reads, writes, and shell commands MUST operate relative to this directory. Do NOT \`cd\` to any other directory.`,
       "",
       `## Question: ${def.question}`,
       "",
@@ -2804,6 +2809,7 @@ export async function buildRewriteDocsPrompt(
   const documentList = docList.length > 0 ? docList.join("\n") : "- No active plan documents found.";
 
   return loadPrompt("rewrite-docs", {
+    workingDirectory: base,
     milestoneId: mid,
     milestoneTitle: midTitle,
     sliceId: sid ?? "none",

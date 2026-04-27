@@ -1864,15 +1864,20 @@ export async function dispatchHookUnit(
   hookModel: string | undefined,
   targetBasePath: string,
 ): Promise<boolean> {
+  const wasActive = s.active;
+  const previousBasePath = s.basePath;
+  const previousCurrentUnit = s.currentUnit ? { ...s.currentUnit } : null;
+
   if (!s.active) {
     s.active = true;
     s.stepMode = true;
     s.cmdCtx = ctx as ExtensionCommandContext;
-    s.basePath = targetBasePath;
     s.autoStartTime = Date.now();
     s.currentUnit = null;
     s.pendingQuickTasks = [];
   }
+
+  s.basePath = targetBasePath;
 
   const hookUnitType = `hook/${hookName}`;
   const hookStartedAt = Date.now();
@@ -1882,6 +1887,23 @@ export async function dispatchHookUnit(
     id: triggerUnitId,
     startedAt: hookStartedAt,
   };
+
+  // Ensure cwd matches basePath BEFORE newSession() captures it (#1389).
+  // newSession() snapshots process.cwd() during construction; chdir-ing
+  // afterward leaves the session rooted to whatever cwd was when the call
+  // was made. Must be synchronous — no awaits between chdir and newSession.
+  try { if (process.cwd() !== s.basePath) process.chdir(s.basePath); } catch (err) {
+    const msg = `Failed to chdir before hook newSession (basePath: ${s.basePath}): ${err instanceof Error ? err.message : String(err)}`;
+    logWarning("engine", msg, { file: "auto.ts", basePath: s.basePath, error: err instanceof Error ? err.message : String(err) });
+    ctx.ui.notify(`${msg}. Cancelling hook dispatch to avoid running in the wrong directory.`, "error");
+    if (wasActive) {
+      s.basePath = previousBasePath;
+      s.currentUnit = previousCurrentUnit;
+    } else {
+      s.reset();
+    }
+    return false;
+  }
 
   const result = await s.cmdCtx!.newSession();
   if (result.cancelled) {
@@ -1938,11 +1960,6 @@ export async function dispatchHookUnit(
 
   ctx.ui.setStatus("gsd-auto", s.stepMode ? "next" : "auto");
   ctx.ui.notify(`Running post-unit hook: ${hookName}`, "info");
-
-  // Ensure cwd matches basePath before hook dispatch (#1389)
-  try { if (process.cwd() !== s.basePath) process.chdir(s.basePath); } catch (err) {
-    logWarning("engine", `chdir failed before hook dispatch: ${err instanceof Error ? err.message : String(err)}`, { file: "auto.ts" });
-  }
 
   debugLog("dispatchHookUnit", {
     phase: "send-message",
