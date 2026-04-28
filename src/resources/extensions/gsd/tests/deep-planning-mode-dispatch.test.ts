@@ -443,14 +443,18 @@ test("Deep mode: research-project clears in-flight marker when prompt assembly f
   assert.strictEqual(existsSync(markerPath), false, "failed prompt assembly must not strand the in-flight marker");
 });
 
-test("Deep mode: research-project does NOT dispatch while in-flight marker exists", async (t) => {
+test("Deep mode: research-project stops while in-flight marker exists", async (t) => {
   const base = makeIsolatedBaseWithCleanup(t);
 
   setupReadyForResearchProject(base);
   writeFileSync(join(base, ".gsd", "runtime", "research-project-inflight"), "{}\n");
   const prefs = { planning_depth: "deep" } as GSDPreferences;
   const result = await rule(RESEARCH_PROJECT_RULE_NAME).match(makeCtx(base, prefs));
-  assert.strictEqual(result, null, "in-flight marker must suppress duplicate research-project dispatch");
+  assert.ok(result && result.action === "stop", "in-flight marker must block downstream dispatch");
+  if (result.action === "stop") {
+    assert.strictEqual(result.level, "info");
+    assert.match(result.reason, /research-project-inflight/);
+  }
 });
 
 test("Deep mode: research-project does NOT dispatch when all 4 research files exist", async (t) => {

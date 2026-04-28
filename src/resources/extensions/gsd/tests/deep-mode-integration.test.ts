@@ -267,6 +267,28 @@ test("integration: deep mode + decision=research + research files missing → re
   }
 });
 
+test("integration: deep mode + research-project marker → stop, not discuss-milestone", async (t) => {
+  const base = makeIsolatedBase();
+  t.after(() => { try { rmSync(base, { recursive: true, force: true }); } catch {} });
+
+  writePreferences(base);
+  writeValidProject(base);
+  writeValidRequirements(base);
+  mkdirSync(join(base, ".gsd", "runtime"), { recursive: true });
+  writeFileSync(
+    join(base, ".gsd", "runtime", "research-decision.json"),
+    JSON.stringify({ decision: "research" }),
+  );
+  writeFileSync(join(base, ".gsd", "runtime", "research-project-inflight"), "{}\n");
+
+  const prefs = { planning_depth: "deep" } as GSDPreferences;
+  const result = await resolveDispatch(makeCtx(base, prefs, "needs-discussion"));
+  assert.strictEqual(result.action, "stop");
+  if (result.action === "stop") {
+    assert.match(result.reason, /research-project-inflight/);
+  }
+});
+
 test("integration: deep mode + decision=research + dimension blocker → discuss-milestone", async (t) => {
   const base = makeIsolatedBase();
   t.after(() => { try { rmSync(base, { recursive: true, force: true }); } catch {} });

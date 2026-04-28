@@ -703,7 +703,13 @@ export const DISPATCH_RULES: DispatchRule[] = [
       // until guided-research-project.md deletes this marker during closeout.
       const runtimeDir = join(gsdRoot(basePath), "runtime");
       const inflightMarkerPath = join(runtimeDir, "research-project-inflight");
-      if (existsSync(inflightMarkerPath)) return null; // already in flight — wait
+      const researchInFlightStop = {
+        action: "stop" as const,
+        reason:
+          "Project research is already in progress. Wait for it to finish, or clear `.gsd/runtime/research-project-inflight` if the prior run crashed.",
+        level: "info" as const,
+      };
+      if (existsSync(inflightMarkerPath)) return researchInFlightStop;
       mkdirSync(runtimeDir, { recursive: true });
       try {
         writeFileSync(
@@ -712,7 +718,9 @@ export const DISPATCH_RULES: DispatchRule[] = [
           { encoding: "utf-8", flag: "wx" },
         );
       } catch (err) {
-        if (err && typeof err === "object" && "code" in err && err.code === "EEXIST") return null;
+        if (err && typeof err === "object" && "code" in err && err.code === "EEXIST") {
+          return researchInFlightStop;
+        }
         throw err;
       }
       try {
@@ -726,8 +734,11 @@ export const DISPATCH_RULES: DispatchRule[] = [
       } catch (err) {
         try {
           if (existsSync(inflightMarkerPath)) unlinkSync(inflightMarkerPath);
-        } catch {
-          // Preserve the prompt assembly error; marker cleanup is best-effort.
+        } catch (cleanupErr) {
+          logWarning(
+            "dispatch",
+            `failed to remove research-project in-flight marker after prompt assembly error: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
+          );
         }
         throw err;
       }

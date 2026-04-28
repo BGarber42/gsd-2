@@ -121,4 +121,4 @@ Once the user confirms:
 4. The file MUST contain all required sections: `## Active`, `## Validated`, `## Deferred`, `## Out of Scope`, `## Traceability`, `## Coverage Summary`. Empty sections are OK; missing sections are not.
 5. Print the final coverage summary in chat: `Active: N | Validated: N | Deferred: N | Out of Scope: N | Mapped to slices: N | Unmapped active: N`.
 6. {{commitInstruction}}
-7. Say exactly: `"Requirements written."` — nothing else.
+7. End your response with exactly: `Requirements written.`
