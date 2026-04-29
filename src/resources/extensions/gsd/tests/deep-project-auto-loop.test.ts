@@ -10,11 +10,12 @@ import { runPreDispatch } from "../auto/phases.ts";
 import { AutoSession } from "../auto/session.ts";
 import { resolveUnitSupervisionTimeouts } from "../auto-timers.ts";
 import { bootstrapAutoSession } from "../auto-start.ts";
-import { isAwaitingUserInput, postUnitPreVerification } from "../auto-post-unit.ts";
+import { postUnitPreVerification } from "../auto-post-unit.ts";
 import { resolveDispatch, setResearchProjectPromptBuilderForTest } from "../auto-dispatch.ts";
 import { resolveExpectedArtifactPath, verifyExpectedArtifact, writeBlockerPlaceholder } from "../auto-recovery.ts";
 import { finalizeProjectResearchTimeout } from "../project-research-policy.ts";
 import { resetRegistry } from "../rule-registry.ts";
+import { approvalGateIdForUnit, isAwaitingUserInput, isExplicitApprovalResponse } from "../user-input-boundary.ts";
 import {
   clearPendingAutoStart,
   checkDeepProjectSetupAfterTurn,
@@ -1006,6 +1007,41 @@ test("deep project setup: plain-text approval wait is treated as waiting for use
     ]),
     true,
   );
+});
+
+test("deep project setup: requirements preview question from screenshot is treated as waiting", () => {
+  assert.equal(
+    isAwaitingUserInput([
+      {
+        role: "assistant",
+        content: [
+          "Proposed requirements:",
+          "",
+          "| ID | Title | Class | Status | Owner | Source |",
+          "| --- | --- | --- | --- | --- | --- |",
+          "| R001 | User can add a task | primary-user-loop | active | M001/none yet | user |",
+          "",
+          "Does this look right? Anything to add, remove, or reclassify?",
+        ].join("\n"),
+      },
+    ]),
+    true,
+  );
+});
+
+test("deep project setup: plain-text approval questions map to write-gate ids", () => {
+  assert.equal(approvalGateIdForUnit("discuss-project", "PROJECT"), "depth_verification_project_confirm");
+  assert.equal(approvalGateIdForUnit("discuss-requirements", "REQUIREMENTS"), "depth_verification_requirements_confirm");
+  assert.equal(approvalGateIdForUnit("discuss-milestone", "M001"), "depth_verification_M001_confirm");
+  assert.equal(approvalGateIdForUnit("research-decision", "RESEARCH-DECISION"), "depth_verification_research_decision_confirm");
+});
+
+test("deep project setup: plain-text approval gate clears only on explicit approval", () => {
+  assert.equal(isExplicitApprovalResponse("yes, looks good"), true);
+  assert.equal(isExplicitApprovalResponse("go ahead and write it"), true);
+  assert.equal(isExplicitApprovalResponse("yes, add delete support first"), false);
+  assert.equal(isExplicitApprovalResponse("not quite, remove the due date"), false);
+  assert.equal(isExplicitApprovalResponse("research", "depth_verification_research_decision_confirm"), true);
 });
 
 test("deep project setup: discuss-milestone question failure pauses instead of artifact-retrying", async () => {

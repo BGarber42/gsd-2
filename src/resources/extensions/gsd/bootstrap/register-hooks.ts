@@ -23,7 +23,7 @@ import { installNotifyInterceptor } from "./notify-interceptor.js";
 import { initNotificationStore } from "../notification-store.js";
 import { initNotificationWidget } from "../notification-widget.js";
 import { extractSubagentAgentClasses } from "./subagent-input.js";
-import { shouldPauseForUserApprovalQuestion } from "../user-input-boundary.js";
+import { approvalGateIdForUnit, isExplicitApprovalResponse, shouldPauseForUserApprovalQuestion } from "../user-input-boundary.js";
 
 // Skip the welcome screen on the very first session_start — cli.ts already
 // printed it before the TUI launched. Only re-print on /clear (subsequent sessions).
@@ -154,6 +154,13 @@ export function registerHooks(
     // Wait for ecosystem loader to finish (no-op after first turn).
     const { getEcosystemReadyPromise } = await import("../ecosystem/loader.js");
     await getEcosystemReadyPromise();
+
+    const pendingApprovalGate = getPendingGate();
+    if (pendingApprovalGate && isExplicitApprovalResponse(event.prompt, pendingApprovalGate)) {
+      const milestoneId = extractDepthVerificationMilestoneId(pendingApprovalGate);
+      if (milestoneId) markDepthVerified(milestoneId);
+      clearPendingGate();
+    }
 
     // GSD's own context injection (existing behavior — unchanged).
     const { buildBeforeAgentStartResult } = await import("./system-context.js");
@@ -328,6 +335,9 @@ export function registerHooks(
     }
 
     if (!shouldPauseForUserApprovalQuestion(unitType, [event.message])) return;
+
+    const gateId = approvalGateIdForUnit(unitType, unitId);
+    if (gateId) setPendingGate(gateId);
 
     approvalQuestionAbortInFlight = true;
     ctx.ui.notify(

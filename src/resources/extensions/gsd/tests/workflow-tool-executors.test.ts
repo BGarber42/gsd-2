@@ -11,7 +11,7 @@ import {
   _getAdapter,
   insertGateRow,
 } from "../gsd-db.ts";
-import { markDepthVerified, clearDiscussionFlowState, loadWriteGateSnapshot } from "../bootstrap/write-gate.ts";
+import { markDepthVerified, clearDiscussionFlowState, loadWriteGateSnapshot, setPendingGate } from "../bootstrap/write-gate.ts";
 import {
   executeCompleteMilestone,
   executePlanMilestone,
@@ -715,6 +715,37 @@ test("executeSummarySave supports root-level deep planning artifacts", async () 
       ],
     );
   } finally {
+    closeDatabase();
+    cleanup(base);
+  }
+});
+
+test("executeSummarySave blocks final root artifacts while approval gate is pending", async () => {
+  const base = makeTmpBase();
+  try {
+    openTestDb(base);
+    await inProjectDir(base, async () => {
+      setPendingGate("depth_verification_requirements_confirm");
+    });
+
+    const result = await inProjectDir(base, () => executeSummarySave({
+      artifact_type: "REQUIREMENTS",
+      content: "# Requirements\n\n## Active\n",
+    }, base));
+
+    assert.equal(result.isError, true);
+    assert.equal(result.details.error, "root_artifact_write_blocked");
+    assert.match(result.content[0].text, /has not been confirmed/);
+    assert.equal(existsSync(join(base, ".gsd", "REQUIREMENTS.md")), false);
+
+    const draft = await inProjectDir(base, () => executeSummarySave({
+      artifact_type: "REQUIREMENTS-DRAFT",
+      content: "# Draft Requirements\n",
+    }, base));
+    assert.equal(draft.isError, undefined);
+    assert.ok(existsSync(join(base, ".gsd", "REQUIREMENTS-DRAFT.md")));
+  } finally {
+    clearDiscussionFlowState();
     closeDatabase();
     cleanup(base);
   }

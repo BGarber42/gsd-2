@@ -1,6 +1,6 @@
 import { ensureDbOpen } from "../bootstrap/dynamic-tools.js";
 import { sanitizeCompleteMilestoneParams } from "../bootstrap/sanitize-complete-milestone.js";
-import { loadWriteGateSnapshot, shouldBlockContextArtifactSaveInSnapshot } from "../bootstrap/write-gate.js";
+import { loadWriteGateSnapshot, shouldBlockContextArtifactSaveInSnapshot, shouldBlockRootArtifactSaveInSnapshot } from "../bootstrap/write-gate.js";
 import {
   getMilestone,
   getSliceStatusSummary,
@@ -95,8 +95,20 @@ export async function executeSummarySave(
       isError: true,
     };
   }
+  const writeGateSnapshot = loadWriteGateSnapshot(basePath);
+  const rootArtifactGuard = shouldBlockRootArtifactSaveInSnapshot(
+    writeGateSnapshot,
+    params.artifact_type,
+  );
+  if (rootArtifactGuard.block) {
+    return {
+      content: [{ type: "text", text: `Error saving artifact: ${rootArtifactGuard.reason ?? "root artifact write blocked"}` }],
+      details: { operation: "save_summary", error: "root_artifact_write_blocked" },
+      isError: true,
+    };
+  }
   const contextGuard = shouldBlockContextArtifactSaveInSnapshot(
-    loadWriteGateSnapshot(basePath),
+    writeGateSnapshot,
     params.artifact_type,
     params.milestone_id ?? null,
     params.slice_id ?? null,

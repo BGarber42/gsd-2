@@ -39,6 +39,45 @@ function lastAssistantText(messages: unknown[] | undefined): string {
   return "";
 }
 
+export function approvalGateIdForUnit(
+  unitType: string | undefined,
+  unitId?: string | null,
+): string | null {
+  if (!unitType) return null;
+  if (unitType === "discuss-project") return "depth_verification_project_confirm";
+  if (unitType === "discuss-requirements") return "depth_verification_requirements_confirm";
+  if (unitType === "research-decision") return "depth_verification_research_decision_confirm";
+  if (unitType === "discuss-milestone") {
+    const safeUnitId = typeof unitId === "string" && /^[A-Za-z0-9_-]+$/.test(unitId)
+      ? unitId
+      : "milestone";
+    return `depth_verification_${safeUnitId}_confirm`;
+  }
+  return null;
+}
+
+const CHANGE_REQUEST_RESPONSE_RE =
+  /\b(?:no|nope|nah|not\s+yet|don't|do\s+not|change|add|remove|reclassify|adjust|clarify|missing|instead|but|however|wait|hold)\b/i;
+
+const APPROVAL_RESPONSE_RE =
+  /^(?:y|yes|yeah|yep|approve|approved|confirm|confirmed|correct|right|looks\s+(?:good|right)|sounds\s+good|all\s+good|ok|okay|go\s+ahead|proceed|write\s+it|save\s+it|do\s+it)\b/i;
+
+const RESEARCH_DECISION_RESPONSE_RE =
+  /^(?:research|run\s+research|do\s+research|skip|skip\s+research|no\s+research)\b/i;
+
+export function isExplicitApprovalResponse(
+  input: string | undefined,
+  pendingGateId?: string | null,
+): boolean {
+  const text = input?.trim() ?? "";
+  if (!text) return false;
+  if (pendingGateId?.includes("research_decision")) {
+    return RESEARCH_DECISION_RESPONSE_RE.test(text);
+  }
+  if (CHANGE_REQUEST_RESPONSE_RE.test(text)) return false;
+  return APPROVAL_RESPONSE_RE.test(text);
+}
+
 export function isAwaitingUserInput(messages: unknown[] | undefined): boolean {
   const text = lastAssistantText(messages);
   if (!text) return false;

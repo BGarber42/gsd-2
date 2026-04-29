@@ -465,6 +465,30 @@ export function shouldBlockContextArtifactSaveInSnapshot(
   };
 }
 
+const FINAL_ROOT_ARTIFACTS = new Set(["PROJECT", "REQUIREMENTS"]);
+
+/**
+ * Final root project artifacts are the output of the project/requirements
+ * approval gates. Drafts remain writable so the agent can prepare previews,
+ * but PROJECT.md and REQUIREMENTS.md must wait for the pending gate to clear.
+ */
+export function shouldBlockRootArtifactSaveInSnapshot(
+  snapshot: WriteGateSnapshot,
+  artifactType: string,
+): { block: boolean; reason?: string } {
+  if (!FINAL_ROOT_ARTIFACTS.has(artifactType)) return { block: false };
+  if (!snapshot.pendingGateId) return { block: false };
+
+  return {
+    block: true,
+    reason: [
+      `HARD BLOCK: Cannot save ${artifactType}.md because discussion gate "${snapshot.pendingGateId}" has not been confirmed by the user.`,
+      `This is a mechanical gate — wait for explicit user approval before writing final project setup artifacts.`,
+      `If approval was requested in plain text, the user must reply with explicit approval before this write is allowed.`,
+    ].join(" "),
+  };
+}
+
 /**
  * Queue-mode execution guard (#2545).
  *

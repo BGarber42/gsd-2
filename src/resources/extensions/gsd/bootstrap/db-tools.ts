@@ -4,6 +4,7 @@ import { Text } from "@gsd/pi-tui";
 
 import { loadEffectiveGSDPreferences } from "../preferences.js";
 import { ensureDbOpen } from "./dynamic-tools.js";
+import { loadWriteGateSnapshot, shouldBlockRootArtifactSaveInSnapshot } from "./write-gate.js";
 import { StringEnum } from "@gsd/pi-ai";
 import { logError } from "../workflow-logger.js";
 import { getErrorMessage } from "../error-utils.js";
@@ -24,6 +25,16 @@ function registerAlias(pi: ExtensionAPI, toolDef: any, aliasName: string, canoni
     description: toolDef.description + ` (alias for ${canonicalName} — prefer the canonical name)`,
     promptGuidelines: [`Alias for ${canonicalName} — prefer the canonical name.`],
   });
+}
+
+function requirementRootWriteGuard(operation: string): { content: Array<{ type: "text"; text: string }>; details: Record<string, unknown>; isError: true } | null {
+  const guard = shouldBlockRootArtifactSaveInSnapshot(loadWriteGateSnapshot(process.cwd()), "REQUIREMENTS");
+  if (!guard.block) return null;
+  return {
+    content: [{ type: "text", text: `Error ${operation} requirement: ${guard.reason ?? "requirements write blocked"}` }],
+    details: { operation, error: "root_artifact_write_blocked" },
+    isError: true,
+  };
 }
 
 /**
@@ -130,6 +141,8 @@ export function registerDbTools(pi: ExtensionAPI): void {
   // ─── gsd_requirement_update (formerly gsd_update_requirement) ───────────
 
   const requirementUpdateExecute = async (_toolCallId: string, params: any, _signal: AbortSignal | undefined, _onUpdate: unknown, _ctx: unknown) => {
+    const gateBlock = requirementRootWriteGuard("update_requirement");
+    if (gateBlock) return gateBlock;
     const dbAvailable = await ensureDbOpen();
     if (!dbAvailable) {
       return {
@@ -208,6 +221,8 @@ export function registerDbTools(pi: ExtensionAPI): void {
   // ─── gsd_requirement_save ─────────────────────────────────────────────
 
   const requirementSaveExecute = async (_toolCallId: string, params: any, _signal: AbortSignal | undefined, _onUpdate: unknown, _ctx: unknown) => {
+    const gateBlock = requirementRootWriteGuard("save_requirement");
+    if (gateBlock) return gateBlock;
     const dbAvailable = await ensureDbOpen();
     if (!dbAvailable) {
       return {

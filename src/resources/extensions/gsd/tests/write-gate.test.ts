@@ -25,6 +25,7 @@ import {
   isMilestoneDepthVerified,
   shouldBlockContextArtifactSave,
   shouldBlockContextArtifactSaveInSnapshot,
+  shouldBlockRootArtifactSaveInSnapshot,
   clearDiscussionFlowState,
   resetWriteGateState,
   loadWriteGateSnapshot,
@@ -218,6 +219,35 @@ test('write-gate: gsd_summary_save only blocks final milestone CONTEXT writes', 
   );
 
   clearDiscussionFlowState();
+});
+
+test('write-gate: root PROJECT/REQUIREMENTS final saves block behind pending approval gate', () => {
+  const snapshot = {
+    verifiedDepthMilestones: [],
+    activeQueuePhase: false,
+    pendingGateId: 'depth_verification_requirements_confirm',
+  };
+
+  assert.strictEqual(
+    shouldBlockRootArtifactSaveInSnapshot(snapshot, 'REQUIREMENTS').block,
+    true,
+    'final REQUIREMENTS.md must wait for approval',
+  );
+  assert.strictEqual(
+    shouldBlockRootArtifactSaveInSnapshot(snapshot, 'PROJECT').block,
+    true,
+    'final PROJECT.md must wait for approval',
+  );
+  assert.strictEqual(
+    shouldBlockRootArtifactSaveInSnapshot(snapshot, 'REQUIREMENTS-DRAFT').block,
+    false,
+    'draft requirements can still be saved',
+  );
+  assert.strictEqual(
+    shouldBlockRootArtifactSaveInSnapshot({ ...snapshot, pendingGateId: null }, 'REQUIREMENTS').block,
+    false,
+    'no pending approval gate means final root artifacts can save',
+  );
 });
 
 // ═══════════════════════════════════════════════════════════════════════

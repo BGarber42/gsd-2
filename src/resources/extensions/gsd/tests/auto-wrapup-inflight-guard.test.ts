@@ -210,6 +210,10 @@ describe("deep setup approval questions pause immediately", () => {
       "message_update must detect approval/question boundaries",
     );
     assert.ok(
+      messageUpdateSection.includes("approvalGateIdForUnit") && messageUpdateSection.includes("setPendingGate"),
+      "plain-text approval questions must set the durable write gate before aborting",
+    );
+    assert.ok(
       messageUpdateSection.includes("ctx.abort()"),
       "message_update must abort the current turn before more tool calls run",
     );
