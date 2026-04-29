@@ -82,10 +82,10 @@ describe("workflow MCP tools", () => {
     assert.deepEqual(
       _buildImportCandidates("../../../src/resources/extensions/gsd/tools/workflow-tool-executors.js"),
       [
-        "../../../src/resources/extensions/gsd/tools/workflow-tool-executors.js",
         "../../../src/resources/extensions/gsd/tools/workflow-tool-executors.ts",
-        "../../../dist/resources/extensions/gsd/tools/workflow-tool-executors.js",
+        "../../../src/resources/extensions/gsd/tools/workflow-tool-executors.js",
         "../../../dist/resources/extensions/gsd/tools/workflow-tool-executors.ts",
+        "../../../dist/resources/extensions/gsd/tools/workflow-tool-executors.js",
       ],
     );
   });
@@ -149,6 +149,27 @@ describe("workflow MCP tools", () => {
       assert.equal(
         readFileSync(join(base, ".gsd", "PROJECT.md"), "utf-8"),
         "# Project\n\nRoot artifact",
+      );
+    } finally {
+      cleanup(base);
+    }
+  });
+
+  it("gsd_summary_save rejects milestone-scoped artifacts without milestone_id at schema parse", async () => {
+    const base = makeTmpBase();
+    try {
+      const server = makeMockServer();
+      registerWorkflowTools(server as any);
+      const tool = server.tools.find((t) => t.name === "gsd_summary_save");
+      assert.ok(tool, "summary tool should be registered");
+
+      await assert.rejects(
+        () => tool!.handler({
+          projectDir: base,
+          artifact_type: "SUMMARY",
+          content: "# Summary\n",
+        }),
+        /milestone_id is required for milestone-scoped artifact types/,
       );
     } finally {
       cleanup(base);

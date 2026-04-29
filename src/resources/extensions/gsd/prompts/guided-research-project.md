@@ -36,7 +36,7 @@ Each task gets its own focused prompt. Each task writes one file.
 
 Prompt:
 
-> Research the standard stack for [domain] in 2026. Identify the dominant libraries, frameworks, runtimes, and infrastructure tools used by [domain] products. For each: current stable version, primary alternatives, why teams pick it, when to avoid it.
+> Research the standard stack for [domain] as of today. Identify the dominant libraries, frameworks, runtimes, and infrastructure tools used by [domain] products. For each: current stable version, primary alternatives, why teams pick it, when to avoid it.
 >
 > Constraints from PROJECT.md: [list any tech constraints / required frameworks the user already specified].
 >

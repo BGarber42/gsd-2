@@ -696,6 +696,21 @@ test("executeSummarySave supports root-level deep planning artifacts", async () 
     assert.equal(project.details.path, "PROJECT.md");
     assert.ok(existsSync(join(base, ".gsd", "PROJECT.md")));
 
+    upsertRequirement({
+      id: "R001",
+      class: "primary-user-loop",
+      status: "active",
+      description: "User can add a task",
+      why: "Core loop",
+      source: "user",
+      primary_owner: "M001/none yet",
+      supporting_slices: "none",
+      validation: "unmapped",
+      notes: "",
+      full_content: "",
+      superseded_by: null,
+    });
+
     const requirements = await inProjectDir(base, () => executeSummarySave({
       artifact_type: "REQUIREMENTS",
       content: "# Requirements\n\n## Active\n\n## Validated\n\n## Deferred\n\n## Out of Scope\n\n## Traceability\n\n## Coverage Summary\n",
@@ -868,6 +883,25 @@ test("executeSummarySave renders final REQUIREMENTS from the DB source of truth"
     assert.equal(artifact.full_content, content);
   } finally {
     clearDiscussionFlowState();
+    closeDatabase();
+    cleanup(base);
+  }
+});
+
+test("executeSummarySave rejects final REQUIREMENTS when the DB source is empty", async () => {
+  const base = makeTmpBase();
+  try {
+    openTestDb(base);
+
+    const result = await inProjectDir(base, () => executeSummarySave({
+      artifact_type: "REQUIREMENTS",
+      content: "# Requirements\n\n## Active\n\n",
+    }, base));
+
+    assert.equal(result.isError, true);
+    assert.equal(result.details.error, "requirements_table_empty");
+    assert.match(result.content[0].text, /requires active DB-backed requirements/);
+  } finally {
     closeDatabase();
     cleanup(base);
   }

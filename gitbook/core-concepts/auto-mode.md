@@ -36,7 +36,7 @@ planning_depth: deep
 
 Deep mode runs one-time discovery gates before normal milestone planning:
 
-```
+```text
 Workflow Preferences -> Project Context -> Requirements -> Research Decision -> Optional Project Research -> Milestone Context/Roadmap
 ```
 

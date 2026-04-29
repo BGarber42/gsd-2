@@ -304,6 +304,8 @@ export async function saveRequirementToDb(
     const db = await import('./gsd-db.js');
 
     // Atomic ID assignment + insert inside a transaction.
+    let createdNewRow = false;
+    let previousRequirement: Requirement | null = null;
     const id = db.transaction(() => {
       const adapter = db._getAdapter();
       if (!adapter) throw new GSDError(GSD_STALE_STATE, "gsd-db: No database open");
@@ -312,16 +314,34 @@ export async function saveRequirementToDb(
         .prepare(
           `SELECT * FROM requirements
            WHERE LOWER(TRIM(description)) = LOWER(TRIM(:description))
+             AND LOWER(COALESCE(status, 'active')) = 'active'
              AND superseded_by IS NULL
            ORDER BY id
            LIMIT 1`,
         )
         .get({ ':description': fields.description });
+      previousRequirement = existingRow
+        ? {
+            id: existingRow['id'] as string,
+            class: existingRow['class'] as string,
+            status: existingRow['status'] as string,
+            description: existingRow['description'] as string,
+            why: existingRow['why'] as string,
+            source: existingRow['source'] as string,
+            primary_owner: existingRow['primary_owner'] as string,
+            supporting_slices: existingRow['supporting_slices'] as string,
+            validation: existingRow['validation'] as string,
+            notes: existingRow['notes'] as string,
+            full_content: existingRow['full_content'] as string,
+            superseded_by: (existingRow['superseded_by'] as string) ?? null,
+          }
+        : null;
 
       const row = adapter
         .prepare('SELECT MAX(CAST(SUBSTR(id, 2) AS INTEGER)) as max_num FROM requirements')
         .get();
       const maxNum = row ? (row['max_num'] as number | null) : null;
+      createdNewRow = !existingRow;
       const nextId = existingRow
         ? String(existingRow['id'])
         : (maxNum == null || isNaN(maxNum))
@@ -376,7 +396,11 @@ export async function saveRequirementToDb(
     } catch (diskErr) {
       logError('manifest', 'disk write failed, rolling back DB row', { fn: 'saveRequirementToDb', error: String((diskErr as Error).message) });
       try {
-        db.deleteRequirementById(id);
+        if (createdNewRow) {
+          db.deleteRequirementById(id);
+        } else if (previousRequirement) {
+          db.upsertRequirement(previousRequirement);
+        }
       } catch (rollbackErr) {
         logError('manifest', 'SPLIT BRAIN: disk write failed AND DB rollback failed — DB has orphaned row', { fn: 'saveRequirementToDb', id, error: String((rollbackErr as Error).message) });
       }
@@ -774,17 +798,26 @@ export async function saveArtifactToDb(
     if (!fullPath.startsWith(gsdDir)) {
       throw new GSDError(GSD_IO_ERROR, `saveArtifactToDb: path escapes .gsd/ directory: ${opts.path}`);
     }
+    let contentToPersist = opts.content;
+    if (opts.artifact_type === 'REQUIREMENTS' && opts.path === 'REQUIREMENTS.md') {
+      const activeRequirements = db.getActiveRequirements();
+      if (activeRequirements.length === 0) {
+        throw new GSDError(GSD_STALE_STATE, 'saveArtifactToDb: REQUIREMENTS final save requires active DB-backed requirements');
+      }
+      contentToPersist = generateRequirementsMd(activeRequirements);
+    }
+
     // Shrinkage guard: if the file already exists and the new content is
     // significantly smaller (<50%), preserve the richer file on disk and
     // store its content in the DB instead of the abbreviated version. Root
     // canonical artifacts are exempt because their content is rendered from
     // canonical DB state, and cleanup/consolidation is often intentionally much
     // smaller than a malformed accumulated file.
-    let dbContent = opts.content;
+    let dbContent = contentToPersist;
     let skipDiskWrite = false;
     if (!isRootCanonicalArtifact(opts) && existsSync(fullPath)) {
       const existingSize = statSync(fullPath).size;
-      const newSize = Buffer.byteLength(opts.content, 'utf-8');
+      const newSize = Buffer.byteLength(contentToPersist, 'utf-8');
       if (existingSize > 0 && newSize < existingSize * 0.5) {
         logWarning('manifest', `new content (${newSize}B) is <50% of existing file (${existingSize}B), preserving disk file`, { fn: 'saveArtifactToDb', path: opts.path });
         dbContent = readFileSync(fullPath, 'utf-8');
@@ -804,7 +837,7 @@ export async function saveArtifactToDb(
     // Write the file to disk (only if we're not preserving a richer existing file)
     if (!skipDiskWrite) {
       try {
-        await saveFile(fullPath, opts.content);
+        await saveFile(fullPath, contentToPersist);
       } catch (diskErr) {
         logError('manifest', 'disk write failed, rolling back DB row', { fn: 'saveArtifactToDb', error: String((diskErr as Error).message) });
         db.deleteArtifactByPath(opts.path);

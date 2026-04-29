@@ -275,7 +275,21 @@ export function registerDbTools(pi: ExtensionAPI): void {
       "The tool writes to the DB and regenerates .gsd/REQUIREMENTS.md automatically.",
     ],
     parameters: Type.Object({
-      class: Type.String({ description: "Requirement class: core-capability, primary-user-loop, launchability, continuity, failure-visibility, integration, quality-attribute, operability, admin/support, compliance/security, differentiator, constraint, or anti-feature" }),
+      class: StringEnum([
+        "core-capability",
+        "primary-user-loop",
+        "launchability",
+        "continuity",
+        "failure-visibility",
+        "integration",
+        "quality-attribute",
+        "operability",
+        "admin/support",
+        "compliance/security",
+        "differentiator",
+        "constraint",
+        "anti-feature",
+      ], { description: "Requirement class" }),
       description: Type.String({ description: "Short description of the requirement" }),
       why: Type.String({ description: "Why this requirement matters" }),
       source: Type.String({ description: "Origin of the requirement (e.g. 'user-research', 'design', 'M001')" }),
@@ -328,13 +342,22 @@ export function registerDbTools(pi: ExtensionAPI): void {
       "artifact_type must be one of: SUMMARY, RESEARCH, CONTEXT, ASSESSMENT, CONTEXT-DRAFT, PROJECT, PROJECT-DRAFT, REQUIREMENTS, REQUIREMENTS-DRAFT.",
       "Use CONTEXT-DRAFT for incremental draft persistence; use CONTEXT for the final milestone context after depth verification.",
     ],
-    parameters: Type.Object({
-      milestone_id: Type.Optional(Type.String({ description: "Milestone ID (e.g. M001). Omit only for PROJECT/PROJECT-DRAFT/REQUIREMENTS/REQUIREMENTS-DRAFT." })),
-      slice_id: Type.Optional(Type.String({ description: "Slice ID (e.g. S01)" })),
-      task_id: Type.Optional(Type.String({ description: "Task ID (e.g. T01)" })),
-      artifact_type: Type.String({ description: "One of: SUMMARY, RESEARCH, CONTEXT, ASSESSMENT, CONTEXT-DRAFT, PROJECT, PROJECT-DRAFT, REQUIREMENTS, REQUIREMENTS-DRAFT" }),
-      content: Type.String({ description: "The full markdown content of the artifact" }),
-    }),
+    parameters: Type.Union([
+      Type.Object({
+        milestone_id: Type.String({ description: "Milestone ID (e.g. M001)" }),
+        slice_id: Type.Optional(Type.String({ description: "Slice ID (e.g. S01)" })),
+        task_id: Type.Optional(Type.String({ description: "Task ID (e.g. T01)" })),
+        artifact_type: StringEnum(["SUMMARY", "RESEARCH", "CONTEXT", "ASSESSMENT", "CONTEXT-DRAFT"], { description: "Milestone-scoped artifact type" }),
+        content: Type.String({ description: "The full markdown content of the artifact" }),
+      }),
+      Type.Object({
+        milestone_id: Type.Optional(Type.String({ description: "Omit for root artifacts" })),
+        slice_id: Type.Optional(Type.String({ description: "Slice ID (e.g. S01)" })),
+        task_id: Type.Optional(Type.String({ description: "Task ID (e.g. T01)" })),
+        artifact_type: StringEnum(["PROJECT", "PROJECT-DRAFT", "REQUIREMENTS", "REQUIREMENTS-DRAFT"], { description: "Root artifact type" }),
+        content: Type.String({ description: "The full markdown content of the artifact" }),
+      }),
+    ]),
     execute: summarySaveExecute,
     renderCall(args: any, theme: any) {
       let text = theme.fg("toolTitle", theme.bold("summary_save "));

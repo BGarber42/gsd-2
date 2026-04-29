@@ -31,8 +31,8 @@ test("source dev CLI remains the child-process GSD_BIN_PATH", () => {
   );
   assert.ok(
     loaderSrc.includes("GSD_DEV_CLI_PATH") &&
-    loaderSrc.includes("const explicitCliPath = process.env.GSD_CLI_PATH?.trim() || process.env.GSD_BIN_PATH?.trim()") &&
-    loaderSrc.includes("isSourceLoader && existsSync(devCliPath) ? devCliPath : invokedBinPath"),
+    /const\s+explicitCliPath\s*=\s*process\.env\.GSD_CLI_PATH\?\.trim\(\)\s*\|\|\s*process\.env\.GSD_BIN_PATH\?\.trim\(\)/.test(loaderSrc) &&
+    /isSourceLoader\s*&&\s*existsSync\(devCliPath\)\s*\?\s*devCliPath\s*:\s*invokedBinPath/.test(loaderSrc),
     "loader.ts must preserve the dev CLI wrapper instead of exposing src/loader.ts to subagents",
   );
 });

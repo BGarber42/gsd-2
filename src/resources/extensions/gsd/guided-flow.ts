@@ -339,7 +339,7 @@ export async function checkDeepProjectSetupAfterTurn(
   if (entry.currentUnitType && entry.currentUnitId) {
     const artifactReady = verifyExpectedArtifact(entry.currentUnitType, entry.currentUnitId, entry.basePath);
     if (!artifactReady) {
-      if (isAwaitingUserInput(event.messages)) return false;
+      if (isAwaitingUserInput(event.messages)) return true;
       return false;
     }
   }

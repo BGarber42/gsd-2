@@ -565,7 +565,7 @@ describe('db-writer', () => {
       const retry = await saveRequirementToDb({
         class: 'primary-user-loop',
         status: 'active',
-        description: 'User can add a task by pressing Enter',
+        description: '  user CAN add a task by pressing Enter  ',
         why: 'Core capture loop, restated on retry',
         source: 'user',
         primary_owner: 'M001/S01',
@@ -679,26 +679,27 @@ describe('db-writer', () => {
     }
   });
 
-  test('saveArtifactToDb — final REQUIREMENTS overwrites smaller projection without reconciling DB rows', async () => {
+  test('saveArtifactToDb — final REQUIREMENTS renders from canonical DB rows', async () => {
     const tmpDir = makeTmpDir();
     const dbPath = path.join(tmpDir, '.gsd', 'gsd.db');
     openDatabase(dbPath);
 
     try {
-      upsertRequirement({
-        id: 'R999',
+      const canonicalRequirement: Requirement = {
+        id: 'R001',
         class: 'primary-user-loop',
         status: 'active',
-        description: 'Stale duplicate requirement',
-        why: 'Old retry state',
-        source: 'test',
+        description: 'User can add a task',
+        why: 'Core loop',
+        source: 'user',
         primary_owner: 'M001/none yet',
         supporting_slices: 'none',
         validation: 'unmapped',
-        notes: '',
+        notes: 'canonical',
         full_content: '',
         superseded_by: null,
-      });
+      };
+      upsertRequirement(canonicalRequirement);
 
       const relPath = 'REQUIREMENTS.md';
       const filePath = path.join(tmpDir, '.gsd', relPath);
@@ -727,42 +728,7 @@ describe('db-writer', () => {
       ].join('\n');
       fs.writeFileSync(filePath, bloatedInvalidContent);
 
-      const canonicalContent = [
-        '# Requirements',
-        '',
-        '## Active',
-        '',
-        '### R001 — Add task',
-        '- Class: primary-user-loop',
-        '- Status: active',
-        '- Description: User can add a task',
-        '- Why it matters: Core loop',
-        '- Source: user',
-        '- Primary owning slice: M001/none yet',
-        '- Supporting slices: none',
-        '- Validation: unmapped',
-        '- Notes: canonical',
-        '',
-        '## Validated',
-        '',
-        '## Deferred',
-        '',
-        '## Out of Scope',
-        '',
-        '## Traceability',
-        '',
-        '| ID | Class | Status | Primary owner | Supporting | Proof |',
-        '|---|---|---|---|---|---|',
-        '| R001 | primary-user-loop | active | M001/none yet | none | unmapped |',
-        '',
-        '## Coverage Summary',
-        '',
-        '- Active requirements: 1',
-        '- Mapped to slices: 0',
-        '- Validated: 0',
-        '- Unmapped active requirements: 1',
-        '',
-      ].join('\n');
+      const canonicalContent = generateRequirementsMd([canonicalRequirement]);
 
       assert.ok(
         Buffer.byteLength(canonicalContent, 'utf-8') < Buffer.byteLength(bloatedInvalidContent, 'utf-8') * 0.5,
@@ -772,7 +738,7 @@ describe('db-writer', () => {
       await saveArtifactToDb({
         path: relPath,
         artifact_type: 'REQUIREMENTS',
-        content: canonicalContent,
+        content: '# Requirements\n\n## Active\n\n### R999 — Wrong markdown source\n\n- Description: This input must not become canonical.\n',
       }, tmpDir);
 
       assert.deepStrictEqual(
@@ -787,7 +753,7 @@ describe('db-writer', () => {
         .all() as Array<Record<string, unknown>>;
       assert.deepStrictEqual(
         reqRows.map((row) => [row['id'], row['description']]),
-        [['R999', 'Stale duplicate requirement']],
+        [['R001', 'User can add a task']],
         'artifact save does not parse markdown back into the requirements table',
       );
 

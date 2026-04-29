@@ -142,21 +142,33 @@ export async function executeSummarySave(
       relativePath = `milestones/${params.milestone_id}/${params.milestone_id}-${params.artifact_type}.md`;
     }
 
+    const activeRequirements = params.artifact_type === "REQUIREMENTS"
+      ? getActiveRequirements()
+      : null;
+    if (params.artifact_type === "REQUIREMENTS" && activeRequirements?.length === 0) {
+      return {
+        content: [{ type: "text", text: "Error saving artifact: REQUIREMENTS final save requires active DB-backed requirements. Save requirements with gsd_requirement_save first." }],
+        details: { operation: "save_summary", error: "requirements_table_empty" },
+        isError: true,
+      };
+    }
+
     const contentToSave = params.artifact_type === "REQUIREMENTS"
-      ? generateRequirementsMd(getActiveRequirements())
+      ? generateRequirementsMd(activeRequirements ?? [])
       : params.content;
     const contentSource = params.artifact_type === "REQUIREMENTS"
       ? "requirements_table"
       : "provided_content";
+    const isRootArtifact = isRootSummaryArtifactType(params.artifact_type);
 
     await saveArtifactToDb(
       {
         path: relativePath,
         artifact_type: params.artifact_type,
         content: contentToSave,
-        milestone_id: params.milestone_id,
-        slice_id: params.slice_id,
-        task_id: params.task_id,
+        milestone_id: isRootArtifact ? undefined : params.milestone_id,
+        slice_id: isRootArtifact ? undefined : params.slice_id,
+        task_id: isRootArtifact ? undefined : params.task_id,
       },
       basePath,
     );

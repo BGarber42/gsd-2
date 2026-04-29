@@ -429,23 +429,24 @@ function getSupportedSummaryArtifactTypes(executors: WorkflowToolExecutors): rea
 }
 
 function buildImportCandidates(relativePath: string): string[] {
-  const candidates: string[] = [relativePath];
-  const sourceTs = relativePath.endsWith(".js")
-    ? relativePath.replace(/\.js$/, ".ts")
-    : null;
-  if (sourceTs) candidates.push(sourceTs);
+  const candidates: string[] = [];
+  const pushPreferredPair = (path: string | null) => {
+    if (!path) return;
+    if (path.endsWith(".js")) candidates.push(path.replace(/\.js$/, ".ts"));
+    candidates.push(path);
+  };
 
-  const swapped = relativePath.includes("/src/")
+  const sourcePath = relativePath.includes("/dist/")
+    ? relativePath.replace("/dist/", "/src/")
+    : relativePath;
+  const distPath = relativePath.includes("/src/")
     ? relativePath.replace("/src/", "/dist/")
     : relativePath.includes("/dist/")
-      ? relativePath.replace("/dist/", "/src/")
+      ? relativePath
       : null;
-  if (swapped) {
-    candidates.push(swapped);
-    if (swapped.endsWith(".js")) {
-      candidates.push(swapped.replace(/\.js$/, ".ts"));
-    }
-  }
+
+  pushPreferredPair(sourcePath);
+  pushPreferredPair(distPath);
 
   return [...new Set(candidates)];
 }
@@ -1202,7 +1203,22 @@ const summarySaveParams = {
   artifact_type: z.string().describe("Artifact type to save (SUMMARY, RESEARCH, CONTEXT, ASSESSMENT, CONTEXT-DRAFT, PROJECT, PROJECT-DRAFT, REQUIREMENTS, REQUIREMENTS-DRAFT)"),
   content: z.string().describe("The full markdown content of the artifact"),
 };
-const summarySaveSchema = z.object(summarySaveParams);
+const ROOT_SUMMARY_ARTIFACT_TYPES = new Set([
+  "PROJECT",
+  "PROJECT-DRAFT",
+  "REQUIREMENTS",
+  "REQUIREMENTS-DRAFT",
+]);
+const summarySaveSchema = z.object(summarySaveParams).superRefine((value, ctx) => {
+  const isRootArtifact = ROOT_SUMMARY_ARTIFACT_TYPES.has(value.artifact_type);
+  if (!isRootArtifact && (!value.milestone_id || value.milestone_id.trim() === "")) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["milestone_id"],
+      message: "milestone_id is required for milestone-scoped artifact types",
+    });
+  }
+});
 
 const decisionSaveParams = {
   projectDir: projectDirParam,
