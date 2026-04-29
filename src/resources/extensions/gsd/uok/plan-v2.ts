@@ -24,6 +24,7 @@ export interface PlanV2CompileResult {
   emptyGraph?: boolean;
   graphPath?: string;
   nodeCount?: number;
+  sliceCount?: number;
   clarifyRoundLimit?: number;
   researchSynthesized?: boolean;
   draftContextIncluded?: boolean;
@@ -175,6 +176,7 @@ export function compileUnitGraphFromState(basePath: string, state: GSDState): Pl
     ok: true,
     graphPath: outPath,
     nodeCount: nodes.length,
+    sliceCount: slices.length,
     clarifyRoundLimit,
     researchSynthesized: output.pipeline.researchSynthesized,
     draftContextIncluded: output.pipeline.draftContextIncluded,
@@ -186,7 +188,10 @@ export function ensurePlanV2Graph(basePath: string, state: GSDState): PlanV2Comp
   const compiled = compileUnitGraphFromState(basePath, state);
   if (!compiled.ok) return compiled;
   if ((compiled.nodeCount ?? 0) <= 0) {
-    if (state.phase === "validating-milestone" || state.phase === "completing-milestone") {
+    if (
+      (state.phase === "validating-milestone" || state.phase === "completing-milestone") &&
+      (compiled.sliceCount ?? 0) > 0
+    ) {
       return compiled;
     }
     return {
