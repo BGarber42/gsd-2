@@ -166,7 +166,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
 	// -- Change tracker & SCM provider -------------------------------------
 
-	changeTracker = new GsdChangeTracker(client);
+	changeTracker = new GsdChangeTracker(client, cwd);
 	context.subscriptions.push(changeTracker);
 
 	scmProvider = new GsdScmProvider(changeTracker, cwd);

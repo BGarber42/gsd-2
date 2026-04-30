@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as fs from "node:fs";
+import * as path from "node:path";
 import type { GsdClient, AgentEvent } from "./gsd-client.js";
 
 export interface FileSnapshot {
@@ -43,7 +44,10 @@ export class GsdChangeTracker implements vscode.Disposable {
 
 	private disposables: vscode.Disposable[] = [];
 
-	constructor(private readonly client: GsdClient) {
+	constructor(
+		private readonly client: GsdClient,
+		private readonly workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(),
+	) {
 		this.disposables.push(this._onDidChange, this._onCheckpointChange);
 
 		this.disposables.push(
@@ -188,8 +192,9 @@ export class GsdChangeTracker implements vscode.Disposable {
 
 			case "tool_execution_start": {
 				const toolName = String(evt.toolName ?? "");
-				const toolInput = (evt.toolInput ?? {}) as Record<string, unknown>;
-				const toolUseId = String(evt.toolUseId ?? "");
+				const normalizedToolName = toolName.toLowerCase();
+				const toolInput = getToolInput(evt);
+				const toolUseId = String(evt.toolCallId ?? evt.toolUseId ?? "");
 
 				// Update checkpoint label with first action description
 				if (!this.turnDescribed) {
@@ -197,9 +202,9 @@ export class GsdChangeTracker implements vscode.Disposable {
 					this.updateLatestCheckpointLabel(describeAction(toolName, toolInput));
 				}
 
-				if (toolName !== "Write" && toolName !== "Edit") break;
+				if (!isFileMutationTool(normalizedToolName)) break;
 
-				const filePath = String(toolInput.file_path ?? toolInput.path ?? "");
+				const filePath = this.resolveToolPath(toolInput);
 
 				if (!filePath) break;
 
@@ -226,7 +231,7 @@ export class GsdChangeTracker implements vscode.Disposable {
 			}
 
 			case "tool_execution_end": {
-				const toolUseId = String(evt.toolUseId ?? "");
+				const toolUseId = String(evt.toolCallId ?? evt.toolUseId ?? "");
 				const filePath = this.pendingTools.get(toolUseId);
 				if (filePath) {
 					this.pendingTools.delete(toolUseId);
@@ -236,6 +241,12 @@ export class GsdChangeTracker implements vscode.Disposable {
 				break;
 			}
 		}
+	}
+
+	private resolveToolPath(input: Record<string, unknown>): string {
+		const rawPath = String(input.file_path ?? input.path ?? "");
+		if (!rawPath) return "";
+		return path.isAbsolute(rawPath) ? rawPath : path.resolve(this.workspaceRoot, rawPath);
 	}
 
 	private createCheckpoint(): void {
@@ -270,26 +281,36 @@ export class GsdChangeTracker implements vscode.Disposable {
 }
 
 function describeAction(toolName: string, input: Record<string, unknown>): string {
-	switch (toolName) {
-		case "Read": {
+	switch (toolName.toLowerCase()) {
+		case "read": {
 			const p = String(input.file_path ?? input.path ?? "");
 			return `Read ${p.split(/[\\/]/).pop() ?? p}`;
 		}
-		case "Write": {
+		case "write":
+		case "write_file": {
 			const p = String(input.file_path ?? "");
 			return `Write ${p.split(/[\\/]/).pop() ?? p}`;
 		}
-		case "Edit": {
+		case "edit": {
 			const p = String(input.file_path ?? "");
 			return `Edit ${p.split(/[\\/]/).pop() ?? p}`;
 		}
-		case "Bash":
+		case "bash":
 			return `$ ${String(input.command ?? "").slice(0, 40)}`;
-		case "Grep":
+		case "grep":
 			return `Grep: ${String(input.pattern ?? "").slice(0, 30)}`;
-		case "Glob":
+		case "glob":
 			return `Glob: ${String(input.pattern ?? "").slice(0, 30)}`;
 		default:
 			return toolName;
 	}
+}
+
+function getToolInput(evt: AgentEvent): Record<string, unknown> {
+	const input = evt.args ?? evt.toolInput ?? evt.input ?? {};
+	return input && typeof input === "object" ? input as Record<string, unknown> : {};
+}
+
+function isFileMutationTool(toolName: string): boolean {
+	return toolName === "write" || toolName === "write_file" || toolName === "edit";
 }
