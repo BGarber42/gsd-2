@@ -2335,7 +2335,7 @@ export function mergeMilestoneToMain(
 
   // 10. Auto-push if enabled
   let pushed = false;
-  if (prefs.auto_push === true && !nothingToCommit) {
+  if (prefs.auto_push === true && prefs.auto_pr !== true && !nothingToCommit) {
     const remote = prefs.remote ?? "origin";
     try {
       execFileSync("git", ["push", remote, mainBranch], {
