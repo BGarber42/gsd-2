@@ -152,6 +152,7 @@ export function loadEffectiveGSDPreferences(
 ): LoadedGSDPreferences | null {
   const globalPreferences = loadGlobalGSDPreferences();
   const projectPreferences = loadProjectGSDPreferences(basePath);
+  const projectHasPlanningDepth = projectPreferences?.preferences.planning_depth !== undefined;
 
   if (!globalPreferences && !projectPreferences) return null;
 
@@ -197,7 +198,25 @@ export function loadEffectiveGSDPreferences(
     };
   }
 
+  result = stripInheritedPlanningDepth(result, projectHasPlanningDepth);
+
   return result;
+}
+
+function stripInheritedPlanningDepth(
+  loaded: LoadedGSDPreferences,
+  projectHasPlanningDepth: boolean,
+): LoadedGSDPreferences {
+  if (projectHasPlanningDepth || loaded.preferences.planning_depth === undefined) {
+    return loaded;
+  }
+
+  // planning_depth is a project bootstrap routing flag, not a user-global
+  // preference. A global ~/.gsd/PREFERENCES.md value should not make every
+  // fresh repo behave like `/gsd new-project --deep`.
+  const preferences: GSDPreferences = { ...loaded.preferences };
+  delete preferences.planning_depth;
+  return { ...loaded, preferences };
 }
 
 function loadPreferencesFile(path: string, scope: "global" | "project"): LoadedGSDPreferences | null {

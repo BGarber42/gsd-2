@@ -886,6 +886,22 @@ export function syncWorktreeStateBack(
   return { synced };
 }
 
+function syncCurrentMilestoneStateAfterMerge(
+  mainBasePath: string,
+  worktreePath: string,
+  milestoneId: string,
+): { synced: string[] } {
+  const mainGsd = gsdRoot(mainBasePath);
+  const wtGsd = gsdRoot(worktreePath);
+  const synced: string[] = [];
+
+  if (isSamePath(mainGsd, wtGsd)) return { synced };
+  if (!existsSync(wtGsd) || !existsSync(mainGsd)) return { synced };
+
+  syncMilestoneDir(wtGsd, mainGsd, milestoneId, synced);
+  return { synced };
+}
+
 /**
  * Sync a single milestone directory from worktree to main.
  * Copies milestone-level .md files, slice-level files, and task summaries.
@@ -1273,7 +1289,14 @@ export function createAutoWorktree(
     const integrationBranch =
       readIntegrationBranch(basePath, milestoneId) ?? undefined;
     const gitPrefs = loadEffectiveGSDPreferences()?.preferences?.git;
-    const startPoint = integrationBranch ?? gitPrefs?.main_branch ?? undefined;
+    const validatedPrefBranch =
+      gitPrefs?.main_branch &&
+      typeof gitPrefs.main_branch === "string" &&
+      gitPrefs.main_branch.length > 0 &&
+      nativeBranchExists(basePath, gitPrefs.main_branch)
+        ? gitPrefs.main_branch
+        : undefined;
+    const startPoint = integrationBranch ?? validatedPrefBranch ?? undefined;
     info = createWorktree(basePath, milestoneId, {
       branch,
       startPoint,
@@ -1453,20 +1476,20 @@ export function teardownAutoWorktree(
  * still works after process restart when module state has been reset.
  */
 export function isInAutoWorktree(basePath: string): boolean {
-  const cwd = process.cwd();
-  if (!isGsdWorktreePath(cwd)) return false;
+  const targetPath = isGsdWorktreePath(basePath) ? basePath : process.cwd();
+  if (!isGsdWorktreePath(targetPath)) return false;
 
   const projectRoot = resolveWorktreeProjectRoot(basePath, originalBase);
-  const cwdProjectRoot = resolveWorktreeProjectRoot(cwd, originalBase);
+  const targetProjectRoot = resolveWorktreeProjectRoot(targetPath, originalBase);
   if (
     normalizeWorktreePathForCompare(projectRoot) !==
-    normalizeWorktreePathForCompare(cwdProjectRoot)
+    normalizeWorktreePathForCompare(targetProjectRoot)
   ) {
     return false;
   }
 
   try {
-    const branch = nativeGetCurrentBranch(cwd);
+    const branch = nativeGetCurrentBranch(targetPath);
     return branch.startsWith("milestone/");
   } catch {
     return false;
@@ -1621,7 +1644,10 @@ function autoCommitDirtyState(cwd: string): boolean {
     return result !== null;
   } catch (e) {
     debugLog("autoCommitDirtyState", { error: String(e) });
-    return false;
+    throw new GSDError(
+      GSD_GIT_ERROR,
+      `Failed to auto-commit dirty worktree state before milestone merge: ${e instanceof Error ? e.message : String(e)}`,
+    );
   }
 }
 
@@ -2222,6 +2248,27 @@ export function mergeMilestoneToMain(
   // 9a-iii. Restore sheltered queued milestone directories (#2505).
   restoreShelter();
 
+  // 9a-iv. Preserve current milestone artifacts that may be untracked in git.
+  // syncWorktreeStateBack intentionally skips the current milestone before the
+  // squash merge to avoid conflicting with the merge content. Once the squash
+  // commit is complete, copy those files back so summaries, validation, and
+  // task outputs survive worktree teardown in external/.gitignored .gsd setups.
+  try {
+    const { synced } = syncCurrentMilestoneStateAfterMerge(
+      originalBasePath_,
+      worktreeCwd,
+      milestoneId,
+    );
+    if (synced.length > 0) {
+      debugLog("mergeMilestoneToMain", {
+        phase: "current-milestone-sync-after-merge",
+        synced: synced.length,
+      });
+    }
+  } catch (err) {
+    logWarning("worktree", `current milestone sync after merge failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   // 9b. Safety check (#1792): if nothing was committed, verify the milestone
   // work is already on the integration branch before allowing teardown.
   // Compare only non-.gsd/ paths — .gsd/ state files diverge normally and
@@ -2288,7 +2335,7 @@ export function mergeMilestoneToMain(
 
   // 10. Auto-push if enabled
   let pushed = false;
-  if (prefs.auto_push === true && !nothingToCommit) {
+  if (prefs.auto_push === true && prefs.auto_pr !== true && !nothingToCommit) {
     const remote = prefs.remote ?? "origin";
     try {
       execFileSync("git", ["push", remote, mainBranch], {
@@ -2339,9 +2386,10 @@ export function mergeMilestoneToMain(
   //     through when the code is genuinely already on the integration branch.
 
   // 11a. Pre-teardown safety net (#1853): if the worktree still has uncommitted
-  // changes (e.g. nativeHasChanges cache returned stale false, or auto-commit
-  // silently failed), force one final commit so code is not destroyed by
-  // `git worktree remove --force`.
+  // changes (e.g. nativeHasChanges cache returned stale false), abort teardown.
+  // Committing here would be too late: the squash merge to the integration
+  // branch already happened, so a new milestone-branch commit would not be
+  // included and branch deletion could drop the only ref to that work.
   //
   // Guard: only run when worktreeCwd is on the milestone branch (#2929).
   // In parallel mode or branch-mode merges, worktreeCwd may be the project
@@ -2360,17 +2408,17 @@ export function mergeMilestoneToMain(
       try {
         const dirtyCheck = nativeWorkingTreeStatus(worktreeCwd);
         if (dirtyCheck) {
-          debugLog("mergeMilestoneToMain", {
-            phase: "pre-teardown-dirty",
-            worktreeCwd,
-            status: dirtyCheck.slice(0, 200),
-          });
-          nativeAddAllWithExclusions(worktreeCwd, RUNTIME_EXCLUSION_PATHS);
-          nativeCommit(worktreeCwd, "chore: pre-teardown auto-commit of uncommitted worktree changes");
+          process.chdir(previousCwd);
+          throw new GSDError(
+            GSD_GIT_ERROR,
+            `Milestone worktree still has uncommitted changes after squash merge. ` +
+              `Aborting teardown to preserve ${milestoneBranch}. Status:\n${dirtyCheck}`,
+          );
         }
       } catch (e) {
+        if (e instanceof GSDError) throw e;
         debugLog("mergeMilestoneToMain", {
-          phase: "pre-teardown-commit-error",
+          phase: "pre-teardown-dirty-check-error",
           error: String(e),
         });
       }

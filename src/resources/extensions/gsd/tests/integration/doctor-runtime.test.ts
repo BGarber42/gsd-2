@@ -124,6 +124,46 @@ describe('doctor-runtime', async () => {
       assert.deepStrictEqual(Object.keys(content.cycleCounts).length, 0, "hook state cycle counts cleared");
     });
 
+    // ─── Test 3b: Exhausted run-uat retry counter detection & fix ──────
+    test('uat_retry_exhausted', async () => {
+      const dir = createMinimalProject();
+      cleanups.push(dir);
+
+      const runtimeDir = join(dir, ".gsd", "runtime");
+      mkdirSync(runtimeDir, { recursive: true });
+      const counterPath = join(runtimeDir, "uat-count-M001-S01.json");
+      writeFileSync(counterPath, JSON.stringify({ count: 7, updatedAt: "2026-04-30T00:00:00.000Z" }));
+
+      const detect = await runGSDDoctor(dir);
+      const uatIssues = detect.issues.filter(i => i.code === "uat_retry_exhausted");
+      assert.ok(uatIssues.length > 0, "detects exhausted UAT retry counter");
+      assert.equal(uatIssues[0]?.unitId, "M001/S01", "issue is scoped to the stuck slice");
+      assert.ok(uatIssues[0]?.fixable === true, "exhausted UAT counter is fixable");
+
+      const fixed = await runGSDDoctor(dir, { fix: true });
+      assert.ok(
+        fixed.fixesApplied.some(f => f.includes("reset exhausted run-uat retry counter for M001/S01")),
+        "fix resets the UAT retry counter",
+      );
+      assert.ok(!existsSync(counterPath), "UAT retry counter removed after fix");
+    });
+
+    test('uat_retry_exhausted — no issue when ASSESSMENT has verdict', async () => {
+      const dir = createMinimalProject();
+      cleanups.push(dir);
+
+      const runtimeDir = join(dir, ".gsd", "runtime");
+      mkdirSync(runtimeDir, { recursive: true });
+      writeFileSync(join(runtimeDir, "uat-count-M001-S01.json"), JSON.stringify({ count: 7 }));
+
+      const assessmentPath = join(dir, ".gsd", "milestones", "M001", "slices", "S01", "S01-ASSESSMENT.md");
+      writeFileSync(assessmentPath, "---\nverdict: PASS\n---\n# UAT Result\n");
+
+      const detect = await runGSDDoctor(dir);
+      const uatIssues = detect.issues.filter(i => i.code === "uat_retry_exhausted");
+      assert.deepStrictEqual(uatIssues.length, 0, "does not flag stale counter when ASSESSMENT already has a verdict");
+    });
+
     // ─── Test 4: Activity log bloat detection ─────────────────────────
     test('activity_log_bloat', async () => {
       const dir = createMinimalProject();

@@ -40,6 +40,15 @@ function makeCommandBase(): string {
   return base;
 }
 
+function writeCommandGlobalDeepPrefs(base: string): void {
+  const home = join(base, ".test-gsd-home");
+  mkdirSync(home, { recursive: true });
+  writeFileSync(
+    join(home, "PREFERENCES.md"),
+    "---\nplanning_depth: deep\nlanguage: German\n---\n",
+  );
+}
+
 function makeUnbornCommandRepo(): string {
   const base = join(tmpdir(), `gsd-deep-project-unborn-${randomUUID()}`);
   mkdirSync(base, { recursive: true });
@@ -205,6 +214,40 @@ async function runNewProjectCommand(base: string, command: string): Promise<unkn
   }
 }
 
+async function runBareGsdCommand(base: string): Promise<unknown[]> {
+  const previousCwd = process.cwd();
+  const previousGsdHome = process.env.GSD_HOME;
+  const previousWorkflowPath = process.env.GSD_WORKFLOW_PATH;
+  const previousProjectRoot = process.env.GSD_PROJECT_ROOT;
+  const workflowPath = join(base, "GSD-WORKFLOW.md");
+  writeFileSync(workflowPath, "# Test Workflow\n");
+
+  try {
+    process.env.GSD_HOME = join(base, ".test-gsd-home");
+    process.env.GSD_WORKFLOW_PATH = workflowPath;
+    delete process.env.GSD_PROJECT_ROOT;
+    process.chdir(base);
+
+    const messages: unknown[] = [];
+    const { handleAutoCommand } = await import("../commands/handlers/auto.ts");
+    await handleAutoCommand("", makeCtx(`bare-${randomUUID()}`) as any, makePi(messages) as any);
+    return messages;
+  } finally {
+    process.chdir(previousCwd);
+    if (previousGsdHome === undefined) delete process.env.GSD_HOME;
+    else process.env.GSD_HOME = previousGsdHome;
+    if (previousWorkflowPath === undefined) delete process.env.GSD_WORKFLOW_PATH;
+    else process.env.GSD_WORKFLOW_PATH = previousWorkflowPath;
+    if (previousProjectRoot === undefined) delete process.env.GSD_PROJECT_ROOT;
+    else process.env.GSD_PROJECT_ROOT = previousProjectRoot;
+
+    try {
+      const { closeDatabase } = await import("../gsd-db.ts");
+      closeDatabase();
+    } catch {}
+  }
+}
+
 test("deep project setup: bootstrap can start auto-mode without an active milestone", async () => {
   const base = makeRepo();
   try {
@@ -344,7 +387,7 @@ test("deep project setup: pre-dispatch takes precedence over an existing draft m
   }
 });
 
-test("deep project setup: pending setup bypasses plan-v2 execution gate", async () => {
+test("deep project setup: pending setup does not rewrite executing state to PROJECT", async () => {
   const base = makeBase();
   try {
     const s = new AutoSession();
@@ -362,7 +405,8 @@ test("deep project setup: pending setup bypasses plan-v2 execution gate", async 
       syncCmuxSidebar: () => {},
       stopAuto: async () => {},
       pauseAuto: async () => { paused = true; },
-      setActiveMilestoneId: () => { throw new Error("must not activate milestone before deep project setup"); },
+      setActiveMilestoneId: () => {},
+      reconcileMergeState: () => "clean",
     } as any;
 
     let seq = 0;
@@ -372,7 +416,7 @@ test("deep project setup: pending setup bypasses plan-v2 execution gate", async 
         pi: {} as any,
         s,
         deps,
-        prefs: { planning_depth: "deep", uok: { plan_v2: { enabled: true } } } as GSDPreferences,
+        prefs: { planning_depth: "deep", uok: { plan_v2: { enabled: false } } } as GSDPreferences,
         iteration: 1,
         flowId: "test-flow",
         nextSeq: () => ++seq,
@@ -383,9 +427,9 @@ test("deep project setup: pending setup bypasses plan-v2 execution gate", async 
     assert.equal(paused, false);
     assert.equal(result.action, "next");
     if (result.action === "next") {
-      assert.equal(result.data.mid, "PROJECT");
-      assert.equal(result.data.state.phase, "pre-planning");
-      assert.equal(result.data.state.activeMilestone, null);
+      assert.equal(result.data.mid, "M001");
+      assert.equal(result.data.state.phase, "executing");
+      assert.equal(result.data.state.activeMilestone?.id, "M001");
     }
   } finally {
     rmSync(base, { recursive: true, force: true });
@@ -524,6 +568,7 @@ test("deep project setup: new-project command only writes planning_depth with --
   const lightBase = makeCommandBase();
   const deepBase = makeCommandBase();
   try {
+    writeCommandGlobalDeepPrefs(lightBase);
     const lightMessages = await runNewProjectCommand(lightBase, "new-project");
     const lightPrefsPath = join(lightBase, ".gsd", "PREFERENCES.md");
     if (existsSync(lightPrefsPath)) {
@@ -534,6 +579,11 @@ test("deep project setup: new-project command only writes planning_depth with --
       );
     }
     assert.equal(lightMessages.length, 1, "plain new-project should still dispatch the normal first milestone discussion");
+    assert.doesNotMatch(
+      String((lightMessages[0] as any).content),
+      /Foreground Deep Setup Question Policy/,
+      "global planning_depth must not make plain new-project take the deep foreground setup path",
+    );
 
     const deepMessages = await runNewProjectCommand(deepBase, "new-project --deep");
     const deepPrefs = readFileSync(join(deepBase, ".gsd", "PREFERENCES.md"), "utf-8");
@@ -546,6 +596,34 @@ test("deep project setup: new-project command only writes planning_depth with --
     clearPendingDeepProjectSetup(deepBase);
     rmSync(lightBase, { recursive: true, force: true });
     rmSync(deepBase, { recursive: true, force: true });
+  }
+});
+
+test("deep project setup: bare /gsd ignores global planning_depth without project opt-in", async () => {
+  const base = makeCommandBase();
+  try {
+    writeCommandGlobalDeepPrefs(base);
+
+    const messages = await runBareGsdCommand(base);
+    const prefsPath = join(base, ".gsd", "PREFERENCES.md");
+
+    if (existsSync(prefsPath)) {
+      assert.doesNotMatch(
+        readFileSync(prefsPath, "utf-8"),
+        /planning_depth\s*:/,
+        "bare /gsd must not persist planning_depth from global preferences",
+      );
+    }
+    assert.equal(messages.length, 1, "bare /gsd should dispatch the normal first milestone discussion");
+    assert.doesNotMatch(
+      String((messages[0] as any).content),
+      /Foreground Deep Setup Question Policy/,
+      "global planning_depth must not make bare /gsd take the deep foreground setup path",
+    );
+  } finally {
+    clearPendingAutoStart(base);
+    clearPendingDeepProjectSetup(base);
+    rmSync(base, { recursive: true, force: true });
   }
 });
 

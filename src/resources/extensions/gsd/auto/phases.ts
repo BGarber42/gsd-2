@@ -416,7 +416,12 @@ export async function runPreDispatch(
   let state = await deps.deriveState(s.basePath);
   const { getDeepStageGate } = await import("../auto-dispatch.js");
   const deepStageGate = getDeepStageGate(prefs, s.basePath);
+  const canRunDeepSetupGate =
+    state.phase === "pre-planning" ||
+    state.phase === "needs-discussion" ||
+    state.phase === "planning";
   if (
+    canRunDeepSetupGate &&
     (deepStageGate.status === "pending" || deepStageGate.status === "blocked")
   ) {
     debugLog("autoLoop", {

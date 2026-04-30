@@ -14,6 +14,18 @@ import { recoverFailedMigration } from "./migrate-external.js";
 import { splitCompletedKey } from "./forensics.js";
 import { findMilestoneIds } from "./milestone-ids.js";
 
+const MAX_UAT_ATTEMPTS = 3;
+
+function hasAssessmentVerdict(basePath: string, mid: string, sid: string): boolean {
+  const assessmentPath = join(gsdRoot(basePath), "milestones", mid, "slices", sid, `${sid}-ASSESSMENT.md`);
+  if (!existsSync(assessmentPath)) return false;
+  try {
+    return /^\s*verdict\s*:\s*(PASS|FAIL|PARTIAL)\b/im.test(readFileSync(assessmentPath, "utf-8"));
+  } catch {
+    return false;
+  }
+}
+
 export async function checkRuntimeHealth(
   basePath: string,
   issues: DoctorIssue[],
@@ -189,6 +201,47 @@ export async function checkRuntimeHealth(
     }
   } catch {
     // Non-fatal — hook state check failed
+  }
+
+  // ── Exhausted run-uat retry counters ──────────────────────────────────
+  try {
+    const runtimeDir = join(root, "runtime");
+    if (existsSync(runtimeDir)) {
+      const uatCounterPattern = /^uat-count-(M\d+)-(S\d+)\.json$/;
+      for (const fileName of readdirSync(runtimeDir)) {
+        const match = fileName.match(uatCounterPattern);
+        if (!match) continue;
+        const [, mid, sid] = match;
+        if (!mid || !sid || hasAssessmentVerdict(basePath, mid, sid)) continue;
+
+        const filePath = join(runtimeDir, fileName);
+        let count = 0;
+        try {
+          const parsed = JSON.parse(readFileSync(filePath, "utf-8"));
+          count = typeof parsed.count === "number" ? parsed.count : 0;
+        } catch {
+          count = MAX_UAT_ATTEMPTS + 1;
+        }
+        if (count <= MAX_UAT_ATTEMPTS) continue;
+
+        issues.push({
+          severity: "warning",
+          code: "uat_retry_exhausted",
+          scope: "slice",
+          unitId: `${mid}/${sid}`,
+          message: `run-uat for ${mid}/${sid} exhausted ${count - 1} retry attempt(s) without an ASSESSMENT verdict. Reset the retry counter after fixing the underlying UAT/tool issue, then rerun /gsd auto.`,
+          file: `.gsd/runtime/${fileName}`,
+          fixable: true,
+        });
+
+        if (shouldFix("uat_retry_exhausted")) {
+          rmSync(filePath, { force: true });
+          fixesApplied.push(`reset exhausted run-uat retry counter for ${mid}/${sid}`);
+        }
+      }
+    }
+  } catch {
+    // Non-fatal — UAT retry counter check failed
   }
 
   // ── Activity log bloat ────────────────────────────────────────────────
