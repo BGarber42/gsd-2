@@ -428,6 +428,29 @@ function getSupportedSummaryArtifactTypes(executors: WorkflowToolExecutors): rea
   return executors.SUPPORTED_SUMMARY_ARTIFACT_TYPES;
 }
 
+function buildImportCandidates(relativePath: string): string[] {
+  const candidates: string[] = [];
+  const pushPreferredPair = (path: string | null) => {
+    if (!path) return;
+    if (path.endsWith(".js")) candidates.push(path.replace(/\.js$/, ".ts"));
+    candidates.push(path);
+  };
+
+  const sourcePath = relativePath.includes("/dist/")
+    ? relativePath.replace("/dist/", "/src/")
+    : relativePath;
+  const distPath = relativePath.includes("/src/")
+    ? relativePath.replace("/src/", "/dist/")
+    : relativePath.includes("/dist/")
+      ? relativePath
+      : null;
+
+  pushPreferredPair(sourcePath);
+  pushPreferredPair(distPath);
+
+  return [...new Set(candidates)];
+}
+
 function getWriteGateModuleCandidates(): string[] {
   const candidates: string[] = [];
   const explicitModule = process.env.GSD_WORKFLOW_WRITE_GATE_MODULE?.trim();
@@ -439,9 +462,8 @@ function getWriteGateModuleCandidates(): string[] {
   }
 
   candidates.push(
-    new URL("../../../src/resources/extensions/gsd/bootstrap/write-gate.js", import.meta.url).href,
-    new URL("../../../dist/resources/extensions/gsd/bootstrap/write-gate.js", import.meta.url).href,
-    new URL("../../../src/resources/extensions/gsd/bootstrap/write-gate.ts", import.meta.url).href,
+    ...buildImportCandidates("../../../src/resources/extensions/gsd/bootstrap/write-gate.js")
+      .map((p) => new URL(p, import.meta.url).href),
   );
 
   return [...new Set(candidates)];
@@ -453,26 +475,17 @@ function toFileUrl(modulePath: string): string {
 
 /** @internal — exported for testing only */
 export function _buildImportCandidates(relativePath: string): string[] {
-  // Build candidate paths: try the given path first, then swap src/<->dist/
-  // and try .ts extension. This handles both dev (tsx from src/) and prod
-  // (compiled from dist/) execution contexts.
-  const candidates: string[] = [relativePath];
-  const swapped = relativePath.includes("/src/")
-    ? relativePath.replace("/src/", "/dist/")
-    : relativePath.includes("/dist/")
-      ? relativePath.replace("/dist/", "/src/")
-      : null;
-  if (swapped) candidates.push(swapped);
-  // Also try .ts variants for dev-mode tsx execution
-  if (relativePath.endsWith(".js")) {
-    candidates.push(relativePath.replace(/\.js$/, ".ts"));
-    if (swapped) candidates.push(swapped.replace(/\.js$/, ".ts"));
-  }
-  return candidates;
+  // Build candidate paths: prefer source first, including the .ts source
+  // variant, before falling back to compiled dist. In source/dev execution a
+  // stale dist/resources tree must not silently override edited source files.
+  return buildImportCandidates(relativePath);
 }
 
 async function importLocalModule<T>(relativePath: string): Promise<T> {
-  const candidates = _buildImportCandidates(relativePath)
+  const rawCandidates = _buildImportCandidates(relativePath);
+  const candidates = (import.meta.url.includes("/dist-test/") || import.meta.url.includes("\\dist-test\\")
+    ? [...rawCandidates].sort((a, b) => Number(a.endsWith(".ts")) - Number(b.endsWith(".ts")))
+    : rawCandidates)
     .map((p) => new URL(p, import.meta.url).href);
 
   let lastErr: unknown;
@@ -497,9 +510,8 @@ function getWorkflowExecutorModuleCandidates(env: NodeJS.ProcessEnv = process.en
   }
 
   candidates.push(
-    new URL("../../../src/resources/extensions/gsd/tools/workflow-tool-executors.js", import.meta.url).href,
-    new URL("../../../dist/resources/extensions/gsd/tools/workflow-tool-executors.js", import.meta.url).href,
-    new URL("../../../src/resources/extensions/gsd/tools/workflow-tool-executors.ts", import.meta.url).href,
+    ...buildImportCandidates("../../../src/resources/extensions/gsd/tools/workflow-tool-executors.js")
+      .map((p) => new URL(p, import.meta.url).href),
   );
 
   return [...new Set(candidates)];
@@ -1194,7 +1206,22 @@ const summarySaveParams = {
   artifact_type: z.string().describe("Artifact type to save (SUMMARY, RESEARCH, CONTEXT, ASSESSMENT, CONTEXT-DRAFT, PROJECT, PROJECT-DRAFT, REQUIREMENTS, REQUIREMENTS-DRAFT)"),
   content: z.string().describe("The full markdown content of the artifact"),
 };
-const summarySaveSchema = z.object(summarySaveParams);
+const ROOT_SUMMARY_ARTIFACT_TYPES = new Set([
+  "PROJECT",
+  "PROJECT-DRAFT",
+  "REQUIREMENTS",
+  "REQUIREMENTS-DRAFT",
+]);
+const summarySaveSchema = z.object(summarySaveParams).superRefine((value, ctx) => {
+  const isRootArtifact = ROOT_SUMMARY_ARTIFACT_TYPES.has(value.artifact_type);
+  if (!isRootArtifact && (!value.milestone_id || value.milestone_id.trim() === "")) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["milestone_id"],
+      message: "milestone_id is required for milestone-scoped artifact types",
+    });
+  }
+});
 
 const decisionSaveParams = {
   projectDir: projectDirParam,
@@ -1222,7 +1249,7 @@ const requirementUpdateSchema = z.object(requirementUpdateParams);
 
 const requirementSaveParams = {
   projectDir: projectDirParam,
-  class: z.string().describe("Requirement class"),
+  class: z.string().describe("Requirement class: core-capability, primary-user-loop, launchability, continuity, failure-visibility, integration, quality-attribute, operability, admin/support, compliance/security, differentiator, constraint, or anti-feature"),
   description: z.string().describe("Short description of the requirement"),
   why: z.string().describe("Why this requirement matters"),
   source: z.string().describe("Origin of the requirement"),

@@ -62,7 +62,6 @@ import {
   formatPriorContextBrief,
 } from "./preparation.js";
 import { verifyExpectedArtifact } from "./auto-recovery.js";
-import { isAwaitingUserInput } from "./auto-post-unit.js";
 
 // ─── Re-exports (preserve public API for existing importers) ────────────────
 export {
@@ -329,7 +328,7 @@ export async function startDeepProjectSetupForeground(
 }
 
 export async function checkDeepProjectSetupAfterTurn(
-  event: { messages: any[] },
+  _event: { messages: any[] },
   ctx?: ExtensionContext,
   basePath?: string,
 ): Promise<boolean> {
@@ -339,7 +338,6 @@ export async function checkDeepProjectSetupAfterTurn(
   if (entry.currentUnitType && entry.currentUnitId) {
     const artifactReady = verifyExpectedArtifact(entry.currentUnitType, entry.currentUnitId, entry.basePath);
     if (!artifactReady) {
-      if (isAwaitingUserInput(event.messages)) return false;
       return false;
     }
   }

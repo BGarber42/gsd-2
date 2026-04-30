@@ -2,6 +2,7 @@ import { ensureDbOpen } from "../bootstrap/dynamic-tools.js";
 import { sanitizeCompleteMilestoneParams } from "../bootstrap/sanitize-complete-milestone.js";
 import { loadWriteGateSnapshot, shouldBlockContextArtifactSaveInSnapshot, shouldBlockRootArtifactSaveInSnapshot } from "../bootstrap/write-gate.js";
 import {
+  getActiveRequirements,
   getMilestone,
   getSliceStatusSummary,
   getSliceTaskCounts,
@@ -9,7 +10,7 @@ import {
   saveGateResult,
 } from "../gsd-db.js";
 import { GATE_REGISTRY } from "../gate-registry.js";
-import { saveArtifactToDb } from "../db-writer.js";
+import { generateRequirementsMd, saveArtifactToDb } from "../db-writer.js";
 import { resolveMilestoneFile, resolveSliceFile } from "../paths.js";
 import { unlinkSync } from "node:fs";
 import type { CompleteMilestoneParams } from "./complete-milestone.js";
@@ -141,14 +142,33 @@ export async function executeSummarySave(
       relativePath = `milestones/${params.milestone_id}/${params.milestone_id}-${params.artifact_type}.md`;
     }
 
+    const activeRequirements = params.artifact_type === "REQUIREMENTS"
+      ? getActiveRequirements()
+      : null;
+    if (params.artifact_type === "REQUIREMENTS" && activeRequirements?.length === 0) {
+      return {
+        content: [{ type: "text", text: "Error: Cannot save REQUIREMENTS artifact — no active requirements found in the database. Call gsd_requirement_save for each requirement before calling gsd_summary_save(REQUIREMENTS)." }],
+        details: { operation: "save_summary", error: "no_active_requirements" },
+        isError: true,
+      };
+    }
+
+    const contentToSave = params.artifact_type === "REQUIREMENTS"
+      ? generateRequirementsMd(activeRequirements ?? [])
+      : params.content;
+    const contentSource = params.artifact_type === "REQUIREMENTS"
+      ? "requirements_table"
+      : "provided_content";
+    const isRootArtifact = isRootSummaryArtifactType(params.artifact_type);
+
     await saveArtifactToDb(
       {
         path: relativePath,
         artifact_type: params.artifact_type,
-        content: params.content,
-        milestone_id: params.milestone_id,
-        slice_id: params.slice_id,
-        task_id: params.task_id,
+        content: contentToSave,
+        milestone_id: isRootArtifact ? undefined : params.milestone_id,
+        slice_id: isRootArtifact ? undefined : params.slice_id,
+        task_id: isRootArtifact ? undefined : params.task_id,
       },
       basePath,
     );
@@ -166,7 +186,7 @@ export async function executeSummarySave(
 
     return {
       content: [{ type: "text", text: `Saved ${params.artifact_type} artifact to ${relativePath}` }],
-      details: { operation: "save_summary", path: relativePath, artifact_type: params.artifact_type },
+      details: { operation: "save_summary", path: relativePath, artifact_type: params.artifact_type, content_source: contentSource },
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

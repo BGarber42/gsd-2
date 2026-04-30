@@ -42,10 +42,22 @@ function extractTextFromMessage(msg: unknown): string {
 function lastAssistantText(messages: unknown[] | undefined): string {
   if (!Array.isArray(messages)) return "";
   for (let i = messages.length - 1; i >= 0; i--) {
-    const text = extractTextFromMessage(messages[i]).trim();
+    const msg = messages[i];
+    if (!msg || typeof msg !== "object") continue;
+    if ((msg as { role?: unknown }).role !== "assistant") continue;
+    const text = extractTextFromMessage(msg).trim();
     if (text) return text;
   }
   return "";
+}
+
+function anyMessageMatches(messages: unknown[] | undefined, pattern: RegExp): boolean {
+  if (!Array.isArray(messages)) return false;
+  return messages.some((msg) => {
+    if (!msg || typeof msg !== "object") return false;
+    if ((msg as { role?: unknown }).role === "user") return false;
+    return pattern.test(extractTextFromMessage(msg));
+  });
 }
 
 function hasApprovalQuestion(text: string): boolean {
@@ -120,10 +132,10 @@ export function isExplicitApprovalResponse(
 }
 
 export function isAwaitingUserInput(messages: unknown[] | undefined): boolean {
+  if (anyMessageMatches(messages, /ask_user_questions was cancelled before receiving a response/i)) return true;
+  if (anyMessageMatches(messages, REMOTE_QUESTION_FAILURE_RE)) return true;
   const text = lastAssistantText(messages);
   if (!text) return false;
-  if (/ask_user_questions was cancelled before receiving a response/i.test(text)) return true;
-  if (REMOTE_QUESTION_FAILURE_RE.test(text)) return true;
   if (APPROVAL_WAIT_RE.test(text)) return true;
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   if (lines.some((line) => line.endsWith("?"))) return true;
@@ -131,10 +143,10 @@ export function isAwaitingUserInput(messages: unknown[] | undefined): boolean {
 }
 
 export function isAwaitingApprovalBoundary(messages: unknown[] | undefined): boolean {
+  if (anyMessageMatches(messages, /ask_user_questions was cancelled before receiving a response/i)) return true;
+  if (anyMessageMatches(messages, REMOTE_QUESTION_FAILURE_RE)) return true;
   const text = lastAssistantText(messages);
   if (!text) return false;
-  if (/ask_user_questions was cancelled before receiving a response/i.test(text)) return true;
-  if (REMOTE_QUESTION_FAILURE_RE.test(text)) return true;
   if (APPROVAL_WAIT_RE.test(text)) return true;
   return hasApprovalQuestion(text);
 }
@@ -144,10 +156,10 @@ export function shouldPauseForUserApprovalQuestion(
   messages: unknown[] | undefined,
 ): boolean {
   if (!unitType || !USER_APPROVAL_UNIT_TYPES.has(unitType)) return false;
+  if (anyMessageMatches(messages, /ask_user_questions was cancelled before receiving a response/i)) return true;
+  if (anyMessageMatches(messages, REMOTE_QUESTION_FAILURE_RE)) return true;
   const text = lastAssistantText(messages);
   if (!text) return false;
-  if (/ask_user_questions was cancelled before receiving a response/i.test(text)) return true;
-  if (REMOTE_QUESTION_FAILURE_RE.test(text)) return true;
   if (APPROVAL_WAIT_RE.test(text)) return true;
   if (unitType === "research-decision") return hasResearchDecisionQuestion(text);
   return hasApprovalQuestion(text);

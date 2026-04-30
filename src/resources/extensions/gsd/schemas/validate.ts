@@ -24,6 +24,8 @@ export interface ValidationResult {
 }
 
 export interface ValidateOptions {
+  /** Milestone ID (for example "M001") for the roadmap being validated. */
+  milestoneId?: string;
   crossRefs?: {
     projectPath?: string;
     requirementsPath?: string;
@@ -296,7 +298,7 @@ function validateRequirementShape(r: ParsedRequirement, errors: ValidationError[
 
 // ─── ROADMAP.md ─────────────────────────────────────────────────────────
 
-function validateRoadmapContent(content: string, requirementsContent: string | null): ValidationResult {
+function validateRoadmapContent(content: string, requirementsContent: string | null, currentMilestoneId: string | null = null): ValidationResult {
   const errors: ValidationError[] = [];
   const warnings: ValidationError[] = [];
   const parsed = parseRoadmap(content);
@@ -374,8 +376,10 @@ function validateRoadmapContent(content: string, requirementsContent: string | n
     for (const s of parsed.slices) {
       const ownsAnyRequirement = reqs.requirements.some(r => {
         if (r.parentSection !== "Active") return false;
-        const m = r.primaryOwner.match(/^M\d{3}\/(S\d{2})$/);
-        return m && m[1] === s.id;
+        const m = r.primaryOwner.match(/^(M\d{3})\/(S\d{2})$/);
+        if (!m) return false;
+        if (currentMilestoneId !== null && m[1] !== currentMilestoneId) return false;
+        return m[2] === s.id;
       });
       if (!ownsAnyRequirement) {
         warnings.push(err("orphan-slice", `Slice ${s.id} owns no Active requirements`, s.id));
@@ -439,6 +443,10 @@ export function validateArtifact(
       return validateRequirementsContent(content, projectContent, roadmapsByMilestone);
     }
     case "roadmap":
-      return validateRoadmapContent(content, opts.crossRefs?.requirementsPath ? loadFile(opts.crossRefs.requirementsPath) : null);
+      return validateRoadmapContent(
+        content,
+        opts.crossRefs?.requirementsPath ? loadFile(opts.crossRefs.requirementsPath) : null,
+        opts.milestoneId ?? filePath.match(/(?:^|[\\/])(M\d{3})(?:[\\/]|-)/)?.[1] ?? null,
+      );
   }
 }

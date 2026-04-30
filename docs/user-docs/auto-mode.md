@@ -34,7 +34,7 @@ You can also opt in when starting project setup with `/gsd new-project --deep` o
 
 Deep mode keeps the normal slice execution loop, but first runs a one-time staged discovery flow before milestone-level planning:
 
-```
+```text
 Workflow Preferences -> Project Context -> Requirements -> Research Decision -> Optional Project Research -> Milestone Context/Roadmap
 ```
 
@@ -46,6 +46,8 @@ Workflow Preferences -> Project Context -> Requirements -> Research Decision -> 
 | `.gsd/runtime/research-decision.json` | `research-decision` | Records `research` or `skip`; this unit only asks the question and writes the marker |
 | `.gsd/research/STACK.md`, `FEATURES.md`, `ARCHITECTURE.md`, `PITFALLS.md` | `research-project`, only when the decision is `research` | Four parallel project-level research outputs for stack, feature norms, architecture, and pitfalls |
 | `.gsd/milestones/<MID>/M###-CONTEXT.md` and `M###-ROADMAP.md` | Normal milestone discussion/planning | Milestone-specific context and executable roadmap |
+
+`REQUIREMENTS.md` is rendered from the requirements stored in the GSD database. Agents should save individual requirements with `gsd_requirement_save`; a final `gsd_summary_save` for `REQUIREMENTS` will fail if no active requirement rows exist instead of treating caller-supplied markdown as canonical.
 
 Project research is informational, not binding. It cross-checks the requirements and surfaces table stakes, risks, and omissions; any new commitment should be added to `.gsd/REQUIREMENTS.md` before planning depends on it.
 

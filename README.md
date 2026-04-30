@@ -450,7 +450,7 @@ On first run, GSD launches a branded setup wizard that walks you through LLM pro
 | `/gsd`                  | Step mode — executes one unit at a time, pauses between each                  |
 | `/gsd next`             | Explicit step mode (same as bare `/gsd`)                                      |
 | `/gsd auto`             | Autonomous mode — researches, plans, executes, commits, repeats               |
-| `/gsd new-project --deep` | Bootstrap a project with staged project-level discovery                    |
+| `/gsd new-project [--deep]` | Bootstrap a project with staged project-level discovery                  |
 | `/gsd quick`            | Execute a quick task with GSD guarantees, skip planning overhead              |
 | `/gsd stop`             | Stop auto mode gracefully                                                     |
 | `/gsd steer`            | Hard-steer plan documents during execution                                    |

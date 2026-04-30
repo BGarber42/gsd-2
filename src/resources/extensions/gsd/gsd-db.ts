@@ -1304,7 +1304,7 @@ export function openDatabase(path: string): boolean {
     // node:sqlite loaded but failed to open this file — try better-sqlite3 as fallback.
     if (providerName === "node:sqlite") {
       try {
-        const mod = _require("better-sqlite3");
+        const mod = _require(BETTER_SQLITE3_PACKAGE);
         const Db = (mod && mod.default) ? mod.default : mod;
         if (typeof Db === "function") {
           rawDb = new Db(path);

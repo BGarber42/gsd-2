@@ -87,6 +87,12 @@ function getGsdArgumentCompletions(prefix: string) {
     ], "next");
   }
 
+  if ((parts[0] === "new-project" || parts[0] === "new-milestone") && parts.length <= 2) {
+    return filterStartsWith(partial, [
+      { cmd: "--deep", desc: "Enable deep planning mode (staged project-level discovery)" },
+    ], parts[0]);
+  }
+
   if (parts[0] === "mode" && parts.length <= 2) {
     return filterStartsWith(partial, [
       { cmd: "global", desc: "Edit global workflow mode" },

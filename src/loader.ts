@@ -144,7 +144,8 @@ const sourceLoaderPath = join(gsdRoot, 'src', 'loader.ts')
 const devCliPath = process.env.GSD_DEV_CLI_PATH?.trim() || join(gsdRoot, 'scripts', 'dev-cli.js')
 const explicitCliPath = process.env.GSD_CLI_PATH?.trim() || process.env.GSD_BIN_PATH?.trim()
 const isSourceLoader = invokedBinPath && resolve(invokedBinPath) === sourceLoaderPath
-const resolvedGsdBinPath = explicitCliPath || (isSourceLoader && existsSync(devCliPath) ? devCliPath : invokedBinPath)
+const rawGsdBinPath = explicitCliPath || (isSourceLoader && existsSync(devCliPath) ? devCliPath : invokedBinPath)
+const resolvedGsdBinPath = rawGsdBinPath ? resolve(rawGsdBinPath) : undefined
 process.env.GSD_BIN_PATH = resolvedGsdBinPath
 if (!process.env.GSD_CLI_PATH) {
   process.env.GSD_CLI_PATH = resolvedGsdBinPath

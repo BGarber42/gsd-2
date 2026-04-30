@@ -105,8 +105,13 @@ export async function handleAgentEnd(
   // rejected" loop even though the files are on disk.
   clearPathCache();
 
-  if (await checkDeepProjectSetupAfterTurn(event, ctx, resolveAgentEndBasePath())) {
-    return;
+  try {
+    if (await checkDeepProjectSetupAfterTurn(event, ctx, resolveAgentEndBasePath())) {
+      return;
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logWarning("bootstrap", `checkDeepProjectSetupAfterTurn failed: ${message}`);
   }
 
   if (checkAutoStartAfterDiscuss()) {
