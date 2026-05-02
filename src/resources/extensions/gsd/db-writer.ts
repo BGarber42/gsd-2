@@ -8,7 +8,7 @@
 // Critical invariant: generated markdown must round-trip through
 // parseDecisionsTable() and parseRequirementsSections() with field fidelity.
 
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import type { Decision, Requirement } from './types.js';
 import { resolveGsdRootFile } from './paths.js';
@@ -731,7 +731,8 @@ export async function saveArtifactToDbForWorkspace(
     const gsdDir = workspace.contract.projectGsd;
     const fullPath = resolve(gsdDir, opts.path);
 
-    if (!fullPath.startsWith(gsdDir)) {
+    const rel0 = relative(gsdDir, fullPath);
+    if (rel0.startsWith('..') || isAbsolute(rel0)) {
       throw new GSDError(GSD_IO_ERROR, `saveArtifactToDbForWorkspace: path escapes .gsd/ directory: ${opts.path}`);
     }
 
@@ -804,7 +805,8 @@ export async function saveArtifactToDbByScope(
     const fullPath = resolve(gsdDir, opts.path);
 
     // Guard against path traversal before any reads/writes
-    if (!fullPath.startsWith(gsdDir)) {
+    const rel1 = relative(gsdDir, fullPath);
+    if (rel1.startsWith('..') || isAbsolute(rel1)) {
       throw new GSDError(GSD_IO_ERROR, `saveArtifactToDbByScope: path escapes .gsd/ directory: ${opts.path}`);
     }
 
