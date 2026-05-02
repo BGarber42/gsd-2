@@ -31,7 +31,7 @@ import {
 import { detectStuck } from "./detect-stuck.js";
 import { runUnit } from "./run-unit.js";
 import { debugLog } from "../debug-logger.js";
-import { resolveWorktreeProjectRoot } from "../worktree-root.js";
+import { resolveWorktreeProjectRoot, normalizeWorktreePathForCompare } from "../worktree-root.js";
 import { PROJECT_FILES, hasProjectFileInAncestor } from "../detection.js";
 import { MergeConflictError } from "../git-service.js";
 import { setCurrentPhase, clearCurrentPhase } from "../../shared/gsd-phase-state.js";
@@ -69,6 +69,12 @@ import {
   getRequiredWorkflowToolsForAutoUnit,
   supportsStructuredQuestions,
 } from "../workflow-mcp.js";
+
+// ─── Path Comparison Helper ───────────────────────────────────────────────
+/** Compare two paths for physical identity, tolerating trailing slashes and symlinks. */
+function isSamePathLocal(a: string, b: string): boolean {
+  return normalizeWorktreePathForCompare(a) === normalizeWorktreePathForCompare(b);
+}
 
 // ─── Session timeout auto-resume state ────────────────────────────────────────
 
@@ -402,7 +408,7 @@ export async function runPreDispatch(
   // Sync project root artifacts into worktree
   if (
     s.originalBasePath &&
-    s.basePath !== s.originalBasePath &&
+    !isSamePathLocal(s.basePath, s.originalBasePath) &&
     s.currentMilestoneId
   ) {
     deps.syncProjectRootToWorktree(

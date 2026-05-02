@@ -42,6 +42,7 @@ import {
 } from "./auto-recovery.js";
 import { regenerateIfMissing } from "./workflow-projections.js";
 import { syncStateToProjectRoot } from "./auto-worktree.js";
+import { normalizeWorktreePathForCompare } from "./worktree-root.js";
 import { isDbAvailable, getTask, getSlice, getMilestone, updateTaskStatus, _getAdapter } from "./gsd-db.js";
 import { renderPlanCheckboxes } from "./markdown-renderer.js";
 import { consumeSignal } from "./session-status-io.js";
@@ -79,6 +80,12 @@ import {
   finalizeProjectResearchTimeout,
 } from "./project-research-policy.js";
 import { validateArtifact } from "./schemas/validate.js";
+
+// ─── Path Comparison Helper ───────────────────────────────────────────────
+/** Compare two paths for physical identity, tolerating trailing slashes and symlinks. */
+function isSamePathLocal(a: string, b: string): boolean {
+  return normalizeWorktreePathForCompare(a) === normalizeWorktreePathForCompare(b);
+}
 
 /** Maximum verification retry attempts before escalating to blocker placeholder (#2653). */
 const MAX_VERIFICATION_RETRIES = 3;
@@ -617,7 +624,7 @@ export async function postUnitPreVerification(pctx: PostUnitContext, opts?: PreV
     });
 
     // Sync worktree state back to project root (skipped for lightweight sidecars)
-    if (!opts?.skipWorktreeSync && s.originalBasePath && s.originalBasePath !== s.basePath) {
+    if (!opts?.skipWorktreeSync && s.originalBasePath && !isSamePathLocal(s.originalBasePath, s.basePath)) {
       await runSafely("postUnit", "worktree-sync", () => {
         syncStateToProjectRoot(s.basePath, s.originalBasePath!, s.currentMilestoneId);
       });

@@ -1,3 +1,4 @@
+// GSD-2 — WorktreeResolver: encapsulates worktree path state and merge/exit lifecycle.
 /**
  * WorktreeResolver — encapsulates worktree path state and merge/exit lifecycle.
  *
@@ -23,7 +24,20 @@ import { emitJournalEvent } from "./journal.js";
 import { emitWorktreeCreated, emitWorktreeMerged } from "./worktree-telemetry.js";
 import { getCollapseCadence, getMilestoneResquash, resquashMilestoneOnMain } from "./slice-cadence.js";
 import { loadEffectiveGSDPreferences } from "./preferences.js";
-import { resolveWorktreeProjectRoot } from "./worktree-root.js";
+import { resolveWorktreeProjectRoot, normalizeWorktreePathForCompare } from "./worktree-root.js";
+
+// ─── Path Comparison Helper ────────────────────────────────────────────────
+/**
+ * Compare two paths for physical identity, tolerating trailing slashes,
+ * symlink differences, and case variations on case-insensitive volumes.
+ *
+ * Used in place of string `===` / `!==` wherever one operand may be
+ * realpath-normalised (e.g. from the workspace registry) and the other
+ * may not be (e.g. a raw caller-supplied basePath).
+ */
+function isSamePath(a: string, b: string): boolean {
+  return normalizeWorktreePathForCompare(a) === normalizeWorktreePathForCompare(b);
+}
 
 // ─── Dependency Interface ──────────────────────────────────────────────────
 
@@ -589,7 +603,7 @@ export class WorktreeResolver {
         milestoneId,
         "ROADMAP",
       );
-      if (!roadmapPath && this.s.basePath !== originalBase) {
+      if (!roadmapPath && !isSamePath(this.s.basePath, originalBase)) {
         roadmapPath = this.deps.resolveMilestoneFile(
           this.s.basePath,
           milestoneId,
